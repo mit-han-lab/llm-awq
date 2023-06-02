@@ -36,7 +36,7 @@ pip install --upgrade pip  # enable PEP 660 support
 pip install -e .
 ```
 
-3. Install kernel implementation
+3. Install efficient W4A16 (4-bit weight, 16-bit activation) CUDA kernel
 ```
 cd awq/kernels
 python setup.py install
