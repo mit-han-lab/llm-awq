@@ -14,14 +14,13 @@ The current release supports:
 
 ## Contents
 
-- [AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration \[Paper\]](#awq-activation-aware-weight-quantization-for-llm-compression-and-acceleration-paper)
-  - [Contents](#contents)
-  - [Install](#install)
-  - [AWQ Model Zoo](#awq-model-zoo)
-  - [Examples](#examples)
-  - [Usage](#usage)
-  - [Reference](#reference)
-  - [Related Projects](#related-projects)
+- [Contents](#contents)
+- [Install](#install)
+- [AWQ Model Zoo](#awq-model-zoo)
+- [Examples](#examples)
+- [Usage](#usage)
+- [Reference](#reference)
+- [Related Projects](#related-projects)
 
 ## Install
 
