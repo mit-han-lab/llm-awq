@@ -14,11 +14,14 @@ The current release supports:
 
 ## Contents
 
-- [Install](#install)
-- [AWQ Model Zoo](#awq-model-zoo)
-- [Examples](#examples)
-- [Usage](#usage)
-- [Reference](#reference)
+- [AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration \[Paper\]](#awq-activation-aware-weight-quantization-for-llm-compression-and-acceleration-paper)
+  - [Contents](#contents)
+  - [Install](#install)
+  - [AWQ Model Zoo](#awq-model-zoo)
+  - [Examples](#examples)
+  - [Usage](#usage)
+  - [Reference](#reference)
+  - [Related Projects](#related-projects)
 
 ## Install
 
@@ -81,7 +84,7 @@ python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
     --run_awq --dump_awq awq_cache/opt-6.7b-w4-g128.pt
 ```
 
-2. Evaluate the AWQ quantize model on WikiText-2 (simulated pseudo quantization)
+2. Evaluate the AWQ quantized model on WikiText-2 (simulated pseudo quantization)
 ```bash
 python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
     --tasks wikitext \
