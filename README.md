@@ -14,13 +14,11 @@ The current release supports:
 
 ## Contents
 
-- [Contents](#contents)
 - [Install](#install)
 - [AWQ Model Zoo](#awq-model-zoo)
 - [Examples](#examples)
 - [Usage](#usage)
 - [Reference](#reference)
-- [Related Projects](#related-projects)
 
 ## Install
 
