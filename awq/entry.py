@@ -80,7 +80,7 @@ def build_model_and_enc(model_path):
             model, args.load_quant, device_map="balanced",
             # TODO: can we remove this?
             no_split_module_classes=[
-                "OPTDecoderLayer", "LlamaDecoderLayer"]
+                "OPTDecoderLayer", "LlamaDecoderLayer", "BloomBlock", "MPTBlock", "DecoderLayer"]
         )
     else:  # fp16 to quantized
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
