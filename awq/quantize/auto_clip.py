@@ -73,7 +73,7 @@ def auto_clip_block(module,
     clip_list = []
     for name in named_linears:
         # due to qk bmm, it is hard to clip precisely
-        if any([_ in name for _ in ["q_", "k_"]]):
+        if any([_ in name for _ in ["q_", "k_", "query", "key", "Wqkv"]]):
             continue
         max_val = auto_clip_layer(
             named_linears[name].weight, input_feat[name], n_bit=w_bit, q_config=q_config)
