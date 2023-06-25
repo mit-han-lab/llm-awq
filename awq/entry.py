@@ -62,15 +62,18 @@ def build_model_and_enc(model_path):
     print(f"* Building model {model_path}")
 
     # all hf model
-    config = AutoConfig.from_pretrained(model_path)
-    enc = AutoTokenizer.from_pretrained(model_path, use_fast=False)
+    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+    if "mpt" in config.__class__.__name__.lower():
+        enc = AutoTokenizer.from_pretrained(config.tokenizer_name)
+    else:
+        enc = AutoTokenizer.from_pretrained(model_path, use_fast=False)
 
     if args.load_quant:  # directly load quantized weights
         # no need to really load the fp16 weights... just to get the model structure
         print("Loading pre-computed quantized weights...")
         with init_empty_weights():
             model = AutoModelForCausalLM.from_pretrained(model_path, config=config,
-                                                         torch_dtype=torch.float16)
+                                                         torch_dtype=torch.float16, trust_remote_code=True)
         real_quantize_model_weight(
             model, w_bit=args.w_bit, q_config=q_config, init_only=True)
         model = load_checkpoint_and_dispatch(
@@ -83,8 +86,7 @@ def build_model_and_enc(model_path):
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 
         model = AutoModelForCausalLM.from_pretrained(
-            model_path, config=config, **kwargs)
-
+            model_path, config=config, trust_remote_code=True, **kwargs)
         if args.run_awq:
             awq_results = run_awq(
                 model, enc,

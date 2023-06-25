@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
 
+from transformers.models.bloom.modeling_bloom import BloomBlock, BloomGelu
 from transformers.models.opt.modeling_opt import OPTDecoderLayer
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm
 
-from ..utils.module import get_op_by_name, get_op_name
+from .qmodule import ScaledActivation
+from ..utils.module import get_op_by_name, get_op_name, set_op_by_name
 
 __all__ = ["auto_scale_block", "apply_scale"]
 
@@ -32,6 +34,13 @@ def scale_ln_fcs(ln, fcs, scales):
     
     scales = scales.to(ln.weight.device)
 
+    # debugging start even scales = 1 does not work?
+    """
+    scales = scales * 0
+    scales = scales + 1
+    """
+    # debugging end
+
     ln.weight.div_(scales)
     if hasattr(ln, 'bias') and ln.bias is not None:
         ln.bias.div_(scales)
@@ -50,11 +59,12 @@ def scale_ln_fcs(ln, fcs, scales):
 def scale_fc_fc(fc1, fc2, scales):
     assert isinstance(fc1, nn.Linear)
     assert isinstance(fc2, nn.Linear)
-    assert fc1.out_features == fc2.in_features
+    # assert fc1.out_features == fc2.in_features
     
     scales = scales.to(fc1.weight.device)
 
-    fc1.weight.div_(scales.view(-1, 1))
+    # fc1.weight.div_(scales.view(-1, 1))
+    fc1.weight[-scales.size(0):].div_(scales.view(-1, 1))
     if fc1.bias is not None:
         fc1.bias.div_(scales.view(-1))
 
@@ -65,6 +75,17 @@ def scale_fc_fc(fc1, fc2, scales):
     for p in fc2.parameters():
         assert torch.isnan(p).sum() == 0
 
+
+@torch.no_grad()
+def scale_gelu_fc(gelu, fc, scales):
+    assert isinstance(gelu, nn.GELU) or isinstance(gelu, BloomGelu)
+    assert isinstance(fc, nn.Linear)
+
+    fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
+
+    for p in fc.parameters():
+        assert torch.isnan(p).sum() == 0
+    
 
 @torch.no_grad()
 def auto_scale_block(module, module_kwargs,
@@ -112,7 +133,7 @@ def auto_scale_block(module, module_kwargs,
                       ).clamp(min=1e-4).view(-1)
             scales = scales / (scales.max() * scales.min()).sqrt()
             for fc in linears2scale:
-                fc.weight.mul_(scales.view(1, -1))
+                fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
                 fc.weight.data = w_quantize_func(
                     fc.weight.data) / (scales.view(1, -1))
             out = block(x, **kwargs)
@@ -204,7 +225,91 @@ def auto_scale_block(module, module_kwargs,
             layers=[module.mlp.down_proj],
             inp=input_feat['mlp.down_proj'],
         ))
+    
+    elif isinstance(module, BloomBlock):
+        # attention input
+        scales_list.append(_auto_get_scale(
+            prev_op=module.input_layernorm,
+            layers=[module.self_attention.query_key_value],
+            inp=input_feat['self_attention.query_key_value'],
+            module2inspect=module, kwargs=module_kwargs,
+        ))
+        # attn out
+        """
+        scales_list.append(_auto_get_scale(
+            prev_op=module.self_attention.query_key_value,
+            layers=[module.self_attention.dense],
+            inp=input_feat['self_attn.dense'],
+        ))
+        """
+        # fc1
+        scales_list.append(_auto_get_scale(
+            prev_op=module.post_attention_layernorm,
+            layers=[module.mlp.dense_h_to_4h],
+            inp=input_feat['mlp.dense_h_to_4h'],
+            module2inspect=module, kwargs=module_kwargs,
+        ))
+        # fc2
+        scales_list.append(_auto_get_scale(
+            prev_op=module.mlp.gelu_impl,
+            layers=[module.mlp.dense_4h_to_h],
+            inp=input_feat['mlp.dense_4h_to_h'],
+        ))
+    elif "mpt" in str(module.__class__).lower():
+        # attention input
+        scales_list.append(_auto_get_scale(
+            prev_op=module.norm_1,
+            layers=[module.attn.Wqkv],
+            inp=input_feat['attn.Wqkv'],
+            module2inspect=module.attn, 
+            kwargs=module_kwargs,
+        ))
+        
+        # attn out
+        scales_list.append(_auto_get_scale(
+            prev_op=module.attn.Wqkv,
+            layers=[module.attn.out_proj],
+            inp=input_feat['attn.out_proj'],
+        ))
+        # fc1
+        scales_list.append(_auto_get_scale(
+            prev_op=module.norm_2,
+            layers=[module.ffn.up_proj],
+            inp=input_feat['ffn.up_proj'],
+            module2inspect=module.ffn,
+        ))
+        # fc2
+        scales_list.append(_auto_get_scale(
+            prev_op=module.ffn.act,
+            layers=[module.ffn.down_proj],
+            inp=input_feat['ffn.down_proj'],
+        ))
 
+    elif "falcon" in str(module.__class__).lower():         
+        # attn out
+        # Haotian: TBD: need to handle repeated scales for MQ
+        """ 
+        scales_list.append(_auto_get_scale(
+            prev_op=module.self_attention.query_key_value,
+            layers=[module.self_attention.dense],
+            inp=input_feat['self_attention.dense'],
+        ))
+        """
+        # fc1, as long as it is scaled, everything is screwed up
+        scales_list.append(_auto_get_scale(
+            prev_op=module.input_layernorm,
+            layers=[module.mlp.dense_h_to_4h, module.self_attention.query_key_value],
+            inp=input_feat['self_attention.query_key_value'],
+            module2inspect=module,
+            kwargs=module_kwargs,
+        ))
+        # fc2
+        scales_list.append(_auto_get_scale(
+            prev_op=module.mlp.act,
+            layers=[module.mlp.dense_4h_to_h],
+            inp=input_feat['mlp.dense_4h_to_h'],
+        ))
+    
     else:
         raise NotImplementedError(f"{type(module)} not supported yet!")
 
@@ -220,6 +325,10 @@ def apply_scale(module, scales_list, input_feat_dict=None):
             scale_fc_fc(prev_op, layers[0], scales)
         elif isinstance(prev_op, (nn.LayerNorm, LlamaRMSNorm)):
             scale_ln_fcs(prev_op, layers, scales)
+        elif isinstance(prev_op, nn.GELU) or isinstance(prev_op, BloomGelu):
+            new_module = ScaledActivation(prev_op, scales)
+            set_op_by_name(module, prev_op_name, new_module)
+            scale_gelu_fc(prev_op, layers[0], scales)
         else:
             raise NotImplementedError(
                 f"prev_op {type(prev_op)} not supported yet!")

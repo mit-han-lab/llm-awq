@@ -47,6 +47,10 @@ class LMEvalAdaptor(BaseLM):
             return 2048
         elif 'llama' in self.model_name:
             return 2048  # TODO: did not check this
+        elif 'mpt' in self.model_name:
+            return 2048
+        elif 'falcon' in self.model_name:
+            return 2048
         else:
             print(self.model.config)
             raise NotImplementedError

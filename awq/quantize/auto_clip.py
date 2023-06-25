@@ -22,7 +22,7 @@ def auto_clip_layer(w, input_feat, n_bit, q_config,
     input_feat = input_feat[:, 0::input_feat.shape[1] // n_sample_token]
     w = w.reshape(w.shape[0], 1, -1, group_size)
 
-    oc_batch_size = 256  # prevent OOM
+    oc_batch_size = 256 if w.shape[0] % 256 == 0 else 64  # prevent OOM
     assert w.shape[0] % oc_batch_size == 0
     w_all = w
     best_max_val_all = []

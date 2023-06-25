@@ -5,6 +5,7 @@ import gc
 import functools
 from collections import defaultdict
 
+from transformers.models.bloom.modeling_bloom import BloomForCausalLM
 from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
@@ -23,6 +24,12 @@ def get_blocks(model):
         layers = model.model.layers
     elif isinstance(model, OPTForCausalLM):
         layers = model.model.decoder.layers
+    elif isinstance(model, BloomForCausalLM):
+        layers = model.transformer.h
+    elif "mpt" in str(model.__class__).lower():
+        layers = model.transformer.blocks
+    elif "falcon" in str(model.__class__).lower():
+        layers = model.transformer.h
     else:
         raise NotImplementedError(type(model))
     return layers
@@ -102,7 +109,6 @@ def run_awq(
         inps = layer(inps, **layer_kwargs)[0]
         for h in handles:
             h.remove()
-
         # now solve for scaling and clipping
         input_feat = {k: torch.cat(v, dim=0) for k, v in input_feat.items()}
 
@@ -112,7 +118,8 @@ def run_awq(
                 w_bit=w_bit, q_config=q_config,
                 input_feat=input_feat,
             )
-            apply_scale(layer, scales_list, input_feat_dict=input_feat)
+            # apply_scale(layer, scales_list, input_feat_dict=input_feat)
+            apply_scale(layers[i], scales_list, input_feat_dict=input_feat)
             # append prefix to make names global
             awq_results["scale"] += append_str_prefix(scales_list, get_op_name(model, layer) + ".")
         
@@ -124,6 +131,7 @@ def run_awq(
             # append prefix to make names global
             awq_results["clip"] += append_str_prefix(clip_list, get_op_name(model, layer) + ".")
 
+        # Haotian: check activation replacement
         del input_feat
         gc.collect()
         torch.cuda.empty_cache()
