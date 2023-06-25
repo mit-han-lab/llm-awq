@@ -235,11 +235,12 @@ def auto_scale_block(module, module_kwargs,
             module2inspect=module, kwargs=module_kwargs,
         ))
         # attn out
+        # Please refer to https://github.com/mit-han-lab/llm-awq/issues/2#issuecomment-1606297469
         """
         scales_list.append(_auto_get_scale(
             prev_op=module.self_attention.query_key_value,
             layers=[module.self_attention.dense],
-            inp=input_feat['self_attn.dense'],
+            inp=input_feat['self_attention.dense'],
         ))
         """
         # fc1
