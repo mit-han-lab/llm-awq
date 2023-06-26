@@ -87,7 +87,13 @@ def build_model_and_enc(model_path):
 
         model = AutoModelForCausalLM.from_pretrained(
             model_path, config=config, trust_remote_code=True, **kwargs)
-        if args.run_awq:
+        
+        if args.load_awq:
+            print("Loading pre-computed AWQ results from", args.load_awq)
+            awq_results = torch.load(args.load_awq, map_location="cpu")
+            apply_awq(model, awq_results)
+            
+        elif args.run_awq:
             awq_results = run_awq(
                 model, enc,
                 w_bit=args.w_bit, q_config=q_config,
@@ -96,11 +102,6 @@ def build_model_and_enc(model_path):
             if args.dump_awq:
                 torch.save(awq_results, args.dump_awq)
                 print("AWQ results saved at", args.dump_awq)
-
-        if args.load_awq:
-            print("Loading pre-computed AWQ results from", args.load_awq)
-            awq_results = torch.load(args.load_awq, map_location="cpu")
-            apply_awq(model, awq_results)
 
         # weight quantization
         if args.w_bit is not None:
