@@ -105,6 +105,9 @@ def build_model_and_enc(model_path):
                 n_samples=128, seqlen=512,
             )
             if args.dump_awq:
+                dirpath = os.path.dirname(args.dump_awq)
+                os.makedirs(dirpath, exist_ok=True)
+                
                 torch.save(awq_results, args.dump_awq)
                 print("AWQ results saved at", args.dump_awq)
                 
@@ -134,6 +137,9 @@ def build_model_and_enc(model_path):
                     model, w_bit=args.w_bit, q_config=q_config
                 )
                 if args.dump_quant:
+                    dirpath = os.path.dirname(args.dump_quant)
+                    os.makedirs(dirpath, exist_ok=True)
+                    
                     print(
                         f"Saving the quantized model at {args.dump_quant}...")
                     torch.save(model.cpu().state_dict(), args.dump_quant)
