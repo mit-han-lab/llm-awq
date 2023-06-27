@@ -34,6 +34,22 @@ def get_blocks(model):
         raise NotImplementedError(type(model))
     return layers
     
+def move_embed(model, device):
+    if isinstance(model, LlamaForCausalLM):
+        model.model.embed_tokens = model.model.embed_tokens.to(device)
+    elif isinstance(model, OPTForCausalLM):
+        model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.to(device)
+        model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(device)
+    elif isinstance(model, BloomForCausalLM):
+        model.transformer.word_embeddings = model.transformer.word_embeddings.to(device)
+        model.transformer.word_embeddings_layernorm = model.transformer.word_embeddings_layernorm.to(device)
+    elif "mpt" in str(model.__class__).lower():
+        model.transformer.wte = model.transformer.wte.to(device)
+        model.transformer.emb_drop = model.transformer.emb_drop.to(device)
+    elif "falcon" in str(model.__class__).lower():
+        model.transformer.word_embeddings = model.transformer.word_embeddings.to(device)
+    else:
+        raise NotImplementedError(type(model))
 
 @torch.no_grad()
 def run_awq(
@@ -57,6 +73,9 @@ def run_awq(
     inps = []
     layer_kwargs = {}
 
+    layers[0] = layers[0].cuda()
+    move_embed(model, "cuda")
+    
     # get input and kwargs to layer 0
     # with_kwargs is only supported in PyTorch 2.0
     # use this Catcher hack for now
@@ -79,6 +98,9 @@ def run_awq(
     layers[0] = layers[0].module  # restore
     inps = inps[0]
 
+    layers[0] = layers[0].cpu()
+    move_embed(model, "cpu")
+    
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -90,6 +112,7 @@ def run_awq(
     # solve layer by layer
     for i in tqdm.tqdm(range(len(layers)), desc="Running AWQ..."):
         layer = layers[i]
+        layer = layer.cuda()
         named_linears = get_named_linears(layer)
 
         # firstly, get input features of all linear layers
@@ -131,6 +154,7 @@ def run_awq(
             # append prefix to make names global
             awq_results["clip"] += append_str_prefix(clip_list, get_op_name(model, layer) + ".")
 
+        layer = layer.cpu()
         # Haotian: check activation replacement
         del input_feat
         gc.collect()

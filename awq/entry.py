@@ -83,17 +83,22 @@ def build_model_and_enc(model_path):
                 "OPTDecoderLayer", "LlamaDecoderLayer", "BloomBlock", "MPTBlock", "DecoderLayer"]
         )
     else:  # fp16 to quantized
-        kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
-
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path, config=config, trust_remote_code=True, **kwargs)
-        
-        if args.load_awq:
-            print("Loading pre-computed AWQ results from", args.load_awq)
-            awq_results = torch.load(args.load_awq, map_location="cpu")
-            apply_awq(model, awq_results)
+        args.run_awq &= not args.load_awq  # if load_awq, no need to run awq
             
-        elif args.run_awq:
+        if args.run_awq:
+            assert args.dump_awq, "Please save the awq results with --dump_awq"
+            
+            # Init model on CPU
+            def skip(*args, **kwargs):
+                pass
+            
+            torch.nn.init.kaiming_normal_ = skip
+            torch.nn.init.kaiming_uniform_ = skip
+            torch.nn.init.uniform_ = skip
+            torch.nn.init.normal_ = skip
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path, config=config, trust_remote_code=True, torch_dtype=torch.float16)
+            
             awq_results = run_awq(
                 model, enc,
                 w_bit=args.w_bit, q_config=q_config,
@@ -102,6 +107,19 @@ def build_model_and_enc(model_path):
             if args.dump_awq:
                 torch.save(awq_results, args.dump_awq)
                 print("AWQ results saved at", args.dump_awq)
+                
+            exit(0)
+        else:
+            # Inference with fake quant
+            # Init model on GPUs:
+            kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path, config=config, trust_remote_code=True, **kwargs)
+                
+        if args.load_awq:
+            print("Loading pre-computed AWQ results from", args.load_awq)
+            awq_results = torch.load(args.load_awq, map_location="cpu")
+            apply_awq(model, awq_results)
 
         # weight quantization
         if args.w_bit is not None:
