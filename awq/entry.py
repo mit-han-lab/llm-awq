@@ -114,8 +114,8 @@ def build_model_and_enc(model_path):
             exit(0)
         else:
             # Inference with fake quant
-            # Init model on GPUs:
-            kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
+            # Init model on CPU:
+            kwargs = {"torch_dtype": torch.float16}
             model = AutoModelForCausalLM.from_pretrained(
                 model_path, config=config, trust_remote_code=True, **kwargs)
                 
@@ -146,6 +146,15 @@ def build_model_and_enc(model_path):
                     exit(0)
             else:
                 raise NotImplementedError
+            
+            # Move the model to GPU (as much as possible) for LM evaluation
+            kwargs = {
+                "torch_dtype": torch.float16, 
+                "device_map": "auto", 
+                "max_memory": {0: "8GiB", "cpu": "99GiB"}
+            }
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path, config=config, state_dict=model.state_dict(), trust_remote_code=True, **kwargs)
 
     return model, enc
 
@@ -163,11 +172,10 @@ def main():
     # a hack here to auto set model group
     model, enc = build_model_and_enc(args.model_path)
 
-    lm_eval_model = LMEvalAdaptor(args.model_path, model, enc, args.batch_size)
-
     if args.tasks is not None:
         task_names = args.tasks.split(",")
 
+        lm_eval_model = LMEvalAdaptor(args.model_path, model, enc, args.batch_size)
         results = evaluator.simple_evaluate(
             model=lm_eval_model,
             tasks=task_names,
