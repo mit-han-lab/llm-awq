@@ -133,5 +133,3 @@ def real_quantize_model_weight(
             set_op_by_name(layer, name, q_linear)
             torch.cuda.empty_cache()
             gc.collect()
-
-    model.tie_weights()
