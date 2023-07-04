@@ -320,6 +320,10 @@ def apply_scale(module, scales_list, input_feat_dict=None):
     for prev_op_name, layer_names, scales in scales_list:
         prev_op = get_op_by_name(module, prev_op_name)
         layers = [get_op_by_name(module, name) for name in layer_names]
+
+        prev_op.cuda()
+        for layer in layers:
+            layer.cuda()
         
         if isinstance(prev_op, nn.Linear):
             assert len(layers) == 1
@@ -339,3 +343,7 @@ def apply_scale(module, scales_list, input_feat_dict=None):
             for layer_name in layer_names:
                 inp = input_feat_dict[layer_name]
                 inp.div_(scales.view(1, -1).to(inp.device))
+
+        prev_op.cpu()
+        for layer in layers:
+            layer.cpu()
