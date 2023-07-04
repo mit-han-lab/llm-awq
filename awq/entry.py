@@ -84,19 +84,12 @@ def build_model_and_enc(model_path):
                                                          torch_dtype=torch.float16, trust_remote_code=True)
         real_quantize_model_weight(
             model, w_bit=args.w_bit, q_config=q_config, init_only=True)
-        
-        # Passing empty max_memory={} causes error
-        kwargs = {"max_memory": max_memory} if len(max_memory) else {}
         model = load_checkpoint_and_dispatch(
-            model,
-            checkpoint=args.load_quant,
-            device_map="balanced",
+            model, args.load_quant, device_map="balanced",
             # TODO: can we remove this?
             no_split_module_classes=[
-                "OPTDecoderLayer", "LlamaDecoderLayer", "BloomBlock", "MPTBlock", "DecoderLayer"],
-            **kwargs
+                "OPTDecoderLayer", "LlamaDecoderLayer", "BloomBlock", "MPTBlock", "DecoderLayer"]
         )
-       
     else:  # fp16 to quantized
         args.run_awq &= not args.load_awq  # if load_awq, no need to run awq
         kwargs = {"torch_dtype": torch.float16, "low_cpu_mem_usage": True}
