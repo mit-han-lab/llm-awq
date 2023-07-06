@@ -57,8 +57,8 @@ The detailed support list:
 | ------ | --------------------------- | --------- | --------- |
 | LLaMA  | 7B/13B/30B/65B              | ✅         | ✅         |
 | OPT    | 125m/1.3B/2.7B/6.7B/13B/30B | ✅         | ✅         |
-| Vicuna | 7B/13B                      | ✅         |           |
-| LLaVA  | 13B                         | ✅         |           |
+| Vicuna-v1.1 | 7B/13B                      | ✅         |           |
+| LLaVA-v0 | 13B                         | ✅         |           |
 
 ## Examples
 
