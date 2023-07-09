@@ -107,11 +107,14 @@ def auto_scale_block(module, module_kwargs,
     def _search_module_scale(block, linears2scale: list, x, kwargs={}):
         # w: co, ci
         # x: n, ci
-        x = x.to(next(block.parameters()).device)
         weight = torch.cat([_m.weight for _m in linears2scale], dim=0)
         w_max = get_weight_scale(
             weight, q_group_size=q_config.get("q_group_size", -1))
+        # Clear GPU memory
+        del weight
+        torch.cuda.empty_cache()
 
+        x = x.to(next(block.parameters()).device)
         with torch.no_grad():
             org_out = block(x, **kwargs)
             if isinstance(org_out, tuple):
@@ -126,6 +129,8 @@ def auto_scale_block(module, module_kwargs,
         n_grid = 20
         history = []
 
+        # Clear GPU memory
+        torch.cuda.empty_cache()
         org_sd = {k: v.cpu() for k, v in block.state_dict().items()}
         for ratio in range(n_grid):
             ratio = ratio * 1 / n_grid
