@@ -73,9 +73,9 @@ def build_model_and_enc(model_path):
     # all hf model
     config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
     if "mpt" in config.__class__.__name__.lower():
-        enc = AutoTokenizer.from_pretrained(config.tokenizer_name)
+        enc = AutoTokenizer.from_pretrained(config.tokenizer_name, trust_remote_code=True)
     else:
-        enc = AutoTokenizer.from_pretrained(model_path, use_fast=False)
+        enc = AutoTokenizer.from_pretrained(model_path, use_fast=False, trust_remote_code=True)
 
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")

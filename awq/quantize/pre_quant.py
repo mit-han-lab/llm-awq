@@ -135,6 +135,9 @@ def run_awq(
         # now solve for scaling and clipping
         input_feat = {k: torch.cat(v, dim=0) for k, v in input_feat.items()}
 
+        # Clear GPU memory
+        torch.cuda.empty_cache()
+
         if auto_scale:  # if it applies, we should also modify the input_feat with scales
             scales_list = auto_scale_block(
                 layer, layer_kwargs,
@@ -145,6 +148,9 @@ def run_awq(
             apply_scale(layers[i], scales_list, input_feat_dict=input_feat)
             # append prefix to make names global
             awq_results["scale"] += append_str_prefix(scales_list, get_op_name(model, layer) + ".")
+
+        # Clear GPU memory
+        torch.cuda.empty_cache()
         
         if mse_range:
             clip_list = auto_clip_block(layer,
