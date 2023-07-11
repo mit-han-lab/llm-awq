@@ -94,16 +94,14 @@ def build_model_and_enc(model_path):
                 "OPTDecoderLayer", "LlamaDecoderLayer", "BloomBlock", "MPTBlock", "DecoderLayer"],
             **kwargs
         )
+        model.eval()
     else:  # fp16 to quantized
         args.run_awq &= not args.load_awq  # if load_awq, no need to run awq
         # Init model on CPU:
         kwargs = {"torch_dtype": torch.float16, "low_cpu_mem_usage": True}
         model = AutoModelForCausalLM.from_pretrained(
             model_path, config=config, trust_remote_code=True, **kwargs)
-        
         model.eval()
-        for param in model.parameters():
-            param.requires_grad = False
 
         if args.run_awq:
             assert args.dump_awq, "Please save the awq results with --dump_awq"
