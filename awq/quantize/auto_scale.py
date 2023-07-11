@@ -1,3 +1,4 @@
+import gc
 import torch
 import torch.nn as nn
 
@@ -112,6 +113,7 @@ def auto_scale_block(module, module_kwargs,
             weight, q_group_size=q_config.get("q_group_size", -1))
         # Clear GPU memory
         del weight
+        gc.collect()
         torch.cuda.empty_cache()
 
         x = x.to(next(block.parameters()).device)
@@ -129,8 +131,6 @@ def auto_scale_block(module, module_kwargs,
         n_grid = 20
         history = []
 
-        # Clear GPU memory
-        torch.cuda.empty_cache()
         org_sd = {k: v.cpu() for k, v in block.state_dict().items()}
         for ratio in range(n_grid):
             ratio = ratio * 1 / n_grid
@@ -169,6 +169,7 @@ def auto_scale_block(module, module_kwargs,
             module2inspect = layers[0]
 
         scales = _search_module_scale(module2inspect, layers, inp, kwargs)
+        scales = scales.detach().cpu()
         # prev_op_name, [layer_name], scale
         return (get_op_name(module, prev_op), tuple([get_op_name(module, m) for m in layers]), scales)
 
@@ -302,13 +303,31 @@ def auto_scale_block(module, module_kwargs,
         ))
         """
         # fc1, as long as it is scaled, everything is screwed up
-        scales_list.append(_auto_get_scale(
-            prev_op=module.input_layernorm,
-            layers=[module.mlp.dense_h_to_4h, module.self_attention.query_key_value],
-            inp=input_feat['self_attention.query_key_value'],
-            module2inspect=module,
-            kwargs=module_kwargs,
-        ))
+        if "falcon-7b" in str(module.__class__).lower():
+            scales_list.append(_auto_get_scale(
+                prev_op=module.input_layernorm,
+                layers=[module.mlp.dense_h_to_4h, module.self_attention.query_key_value],
+                inp=input_feat['self_attention.query_key_value'],
+                module2inspect=module,
+                kwargs=module_kwargs,
+            ))
+        elif "falcon-40b" in str(module.__class__).lower():
+            scales_list.append(_auto_get_scale(
+                prev_op=module.ln_attn,
+                layers=[module.self_attention.query_key_value],
+                inp=input_feat['self_attention.query_key_value'],
+                module2inspect=module,
+                kwargs=module_kwargs,
+            ))
+            scales_list.append(_auto_get_scale(
+                prev_op=module.ln_mlp,
+                layers=[module.mlp.dense_h_to_4h],
+                inp=input_feat['mlp.dense_h_to_4h'],
+                module2inspect=module,
+                kwargs=module_kwargs,
+            ))
+        else:
+            raise NotImplementedError("Unknown Falcon architecture, currently only falcon-7b and falcon-40b are supported")
         # fc2
         scales_list.append(_auto_get_scale(
             prev_op=module.mlp.act,
@@ -329,6 +348,7 @@ def apply_scale(module, scales_list, input_feat_dict=None):
         prev_op.cuda()
         for layer in layers:
             layer.cuda()
+        scales.cuda()
         
         if isinstance(prev_op, nn.Linear):
             assert len(layers) == 1
@@ -352,3 +372,4 @@ def apply_scale(module, scales_list, input_feat_dict=None):
         prev_op.cpu()
         for layer in layers:
             layer.cpu()
+        scales.cpu()

@@ -4,11 +4,12 @@ import torch
 import argparse
 import os
 import json
-from accelerate import init_empty_weights, infer_auto_device_map, dispatch_model, load_checkpoint_and_dispatch
+from accelerate import init_empty_weights, infer_auto_device_map, dispatch_model, load_checkpoint_in_model
 from awq.utils.parallel import auto_parallel
 from awq.quantize.pre_quant import run_awq, apply_awq
 from awq.quantize.quantizer import pseudo_quantize_model_weight, real_quantize_model_weight
 from awq.utils.lm_eval_adaptor import LMEvalAdaptor
+from awq.utils.utils import simple_dispatch_model
 
 
 parser = argparse.ArgumentParser()
@@ -80,22 +81,40 @@ def build_model_and_enc(model_path):
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
         with init_empty_weights():
-            model = AutoModelForCausalLM.from_pretrained(model_path, config=config,
-                                                         torch_dtype=torch.float16, trust_remote_code=True)
+            model = AutoModelForCausalLM.from_config(config=config,
+                                                     torch_dtype=torch.float16, trust_remote_code=True)
         real_quantize_model_weight(
             model, w_bit=args.w_bit, q_config=q_config, init_only=True)
-        model = load_checkpoint_and_dispatch(
-            model, args.load_quant, device_map="balanced",
-            # TODO: can we remove this?
+        
+        model.tie_weights()
+        
+        # Infer device map
+        kwargs = {"max_memory": max_memory} if len(max_memory) else {}
+        device_map = infer_auto_device_map(
+            model,
             no_split_module_classes=[
-                "OPTDecoderLayer", "LlamaDecoderLayer", "BloomBlock", "MPTBlock", "DecoderLayer"]
+                "OPTDecoderLayer", "LlamaDecoderLayer", "BloomBlock", "MPTBlock", "DecoderLayer"],
+            **kwargs
         )
+        # Load checkpoint in the model
+        load_checkpoint_in_model(
+            model,
+            checkpoint=args.load_quant,
+            device_map=device_map,
+            offload_state_dict=True,
+        )
+        # Dispatch model
+        model = simple_dispatch_model(model, device_map=device_map)
+
+        model.eval()
     else:  # fp16 to quantized
         args.run_awq &= not args.load_awq  # if load_awq, no need to run awq
         # Init model on CPU:
         kwargs = {"torch_dtype": torch.float16, "low_cpu_mem_usage": True}
         model = AutoModelForCausalLM.from_pretrained(
             model_path, config=config, trust_remote_code=True, **kwargs)
+
+        model.eval()
 
         if args.run_awq:
             assert args.dump_awq, "Please save the awq results with --dump_awq"
