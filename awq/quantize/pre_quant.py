@@ -95,6 +95,7 @@ def run_awq(
         model(samples.to(next(model.parameters()).device))
     except ValueError:  # work with early exit
         pass
+    del samples
     layers[0] = layers[0].module  # restore
     inps = inps[0]
 
