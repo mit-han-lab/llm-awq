@@ -319,8 +319,6 @@ def auto_scale_block(module, module_kwargs,
                 module2inspect=module,
                 kwargs=module_kwargs,
             ))
-            gc.collect()
-            torch.cuda.empty_cache()
             scales_list.append(_auto_get_scale(
                 prev_op=module.ln_mlp,
                 layers=[module.mlp.dense_h_to_4h],
