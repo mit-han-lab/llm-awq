@@ -79,7 +79,7 @@ def build_model_and_enc(model_path):
 
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
-        with init_empty_weights():
+        with init_empty_weights(include_buffers=True):
             model = AutoModelForCausalLM.from_config(config=config,
                                                      torch_dtype=torch.float16, trust_remote_code=True)
         real_quantize_model_weight(
