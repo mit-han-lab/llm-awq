@@ -79,7 +79,7 @@ def build_model_and_enc(model_path):
 
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
-        with init_empty_weights(include_buffers=True):
+        with init_empty_weights():
             model = AutoModelForCausalLM.from_config(config=config,
                                                      torch_dtype=torch.float16, trust_remote_code=True)
         real_quantize_model_weight(
@@ -88,7 +88,6 @@ def build_model_and_enc(model_path):
         kwargs = {"max_memory": max_memory} if len(max_memory) else {}
         model = load_checkpoint_and_dispatch(
             model, args.load_quant, device_map="balanced",
-            offload_buffers=True,
             # TODO: can we remove this?
             no_split_module_classes=[
                 "OPTDecoderLayer", "LlamaDecoderLayer", "BloomBlock", "MPTBlock", "DecoderLayer"],
