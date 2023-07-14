@@ -130,6 +130,7 @@ def real_quantize_model_weight(
                 q_linear = WQLinear.from_linear(
                     module, w_bit, q_config['q_group_size'], False, scales, zeros)
                 module.cpu()
+            q_linear.to(next(layer.parameters()).device)
             set_op_by_name(layer, name, q_linear)
             torch.cuda.empty_cache()
             gc.collect()
