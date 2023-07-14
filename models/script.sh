@@ -1,7 +1,5 @@
 #!/bin/bash
 
-export GIT_LFS_SKIP_SMUDGE=1
-
 # List all directories
 directories=$(find . -type d)
 
