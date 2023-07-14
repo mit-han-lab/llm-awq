@@ -24,5 +24,7 @@ for dir in $directories; do
 
   # Change back to the previous directory
   cd ..
+
+  break
 done
 
