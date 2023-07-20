@@ -55,10 +55,11 @@ The detailed support list:
 
 | Models | Sizes                       | INT4-g128 | INT3-g128 |
 | ------ | --------------------------- | --------- | --------- |
-| LLaMA  | 7B/13B/30B/65B              | ✅         | ✅         |
-| OPT    | 125m/1.3B/2.7B/6.7B/13B/30B | ✅         | ✅         |
-| Vicuna-v1.1 | 7B/13B                      | ✅         |           |
-| LLaVA-v0 | 13B                         | ✅         |           |
+| LLaMA-2  | 7B/7B-chat/13B/13B-chat   | ✅         | ✅        |
+| LLaMA  | 7B/13B/30B/65B              | ✅         | ✅        |
+| OPT    | 125m/1.3B/2.7B/6.7B/13B/30B | ✅         | ✅        |
+| Vicuna-v1.1 | 7B/13B                 | ✅         |           |
+| LLaVA-v0 | 13B                       | ✅         |           |
 
 ## Examples
 
