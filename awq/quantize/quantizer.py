@@ -2,10 +2,47 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import gc
+from .qmodule import ScaledActivation
+from ..utils.module import set_op_by_name
+
+from transformers.models.bloom.modeling_bloom import BloomBlock
 
 EMBEDDING_KEYWORDS = ["embed"]
 LM_HEAD_KEYWORDS = ["lm_head", "embed_out", "output"]
 
+
+def scale_activations(module):
+    param = next(module.parameters())
+    dtype = param.dtype
+    device = param.device
+    if isinstance(module, BloomBlock):
+        if isinstance(module.mlp.gelu_impl, ScaledActivation):
+            return
+        c = module.mlp.dense_h_to_4h.out_features
+        act = ScaledActivation(
+            module.mlp.gelu_impl, 
+            torch.ones(c, dtype=dtype, device=device)
+        )
+        set_op_by_name(module, "mlp.gelu_impl", act)
+    elif 'mptblock' in str(module.__class__.__name__).lower():
+        if isinstance(module.ffn.act, ScaledActivation):
+            return
+        c = module.ffn.up_proj.out_features
+        act = ScaledActivation(
+            module.ffn.act, 
+            torch.ones(c, dtype=dtype, device=device)
+        )
+        set_op_by_name(module, "ffn.act", act)
+    elif 'falcon' in str(module.__class__).lower():
+        if isinstance(module.mlp.act, ScaledActivation):
+            return
+        c = module.mlp.dense_h_to_4h.out_features
+        act = ScaledActivation(
+            module.mlp.act, 
+            torch.ones(c, dtype=dtype, device=device)
+        )
+        set_op_by_name(module, "mlp.act", act)
+    
 
 # core quantization method (simulated quantization)
 def pseudo_quantize_tensor(w, n_bit=8,
@@ -61,7 +98,9 @@ def pseudo_quantize_model_weight(
     for i in tqdm(range(len(layers)), desc="pseudo weight quantization..."):
         named_linears = get_named_linears(layers[i])
         for n, m in named_linears.items():
+            m.cuda()
             m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=w_bit, **q_config)
+            m.cpu()
 
 
 @torch.no_grad()
@@ -77,29 +116,21 @@ def real_quantize_model_weight(
     for i in tqdm(range(len(layers)), desc="real weight quantization..." + ("(init only)" if init_only else "")):
         layer = layers[i]
         named_linears = get_named_linears(layer)
-        
+        scale_activations(layer)
+
         for name, module in named_linears.items():
             if init_only:
                 q_linear = WQLinear.from_linear(
                     module, w_bit, q_config['q_group_size'], True)
             else:
+                module.cuda()
                 module.weight.data, scales, zeros = pseudo_quantize_tensor(module.weight.data, n_bit=w_bit, get_scale_zp=True, **q_config)
                 scales = scales.t().contiguous()
                 zeros = zeros.t().contiguous()
                 q_linear = WQLinear.from_linear(
                     module, w_bit, q_config['q_group_size'], False, scales, zeros)
-            
-            levels = name.split('.')
-            if len(levels) > 1:
-                mod_ = layer
-                for l_idx in range(len(levels)-1):
-                    if levels[l_idx].isdigit():
-                        mod_ = mod_[int(levels[l_idx])]
-                    else:
-                        mod_ = getattr(mod_, levels[l_idx])
-                setattr(mod_, levels[-1], q_linear)
-            else:
-                setattr(layer, name, q_linear)
-                
+                module.cpu()
+            q_linear.to(next(layer.parameters()).device)
+            set_op_by_name(layer, name, q_linear)
             torch.cuda.empty_cache()
             gc.collect()

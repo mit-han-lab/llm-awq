@@ -4,6 +4,16 @@ import torch.nn as nn
 import f16s4_gemm  # with CUDA kernels
 
 
+class ScaledActivation(nn.Module):
+    def __init__(self, module, scales):
+        super().__init__()
+        self.act = module
+        self.scales = nn.Parameter(scales.data)
+    
+    def forward(self, x):
+        return self.act(x) / self.scales.view(1, 1, -1).to(x.device)
+
+
 class WQLinear(nn.Module):
     def __init__(self, w_bit, group_size, in_features, out_features, bias, dev):
         super().__init__()
@@ -83,3 +93,7 @@ class WQLinear(nn.Module):
         out = out + self.bias if self.bias is not None else out
         return out.reshape(out_shape)
     
+    def extra_repr(self) -> str:
+        return 'in_features={}, out_features={}, bias={}, w_bit={}, group_size={}'.format(
+            self.in_features, self.out_features, self.bias is not None, self.w_bit, self.group_size
+        )
