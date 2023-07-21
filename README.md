@@ -7,10 +7,14 @@
 The current release supports: 
 
 - AWQ search for accurate quantization. 
-- Pre-computed AWQ model zoo for LLMs (LLaMA, OPT, Vicuna, LLaVA; load to generate quantized weights).
+- Pre-computed AWQ model zoo for LLMs (LLaMA-1&2, OPT, Vicuna, LLaVA; load to generate quantized weights).
 - Memory-efficient 4-bit Linear in PyTorch.
 - Efficient CUDA kernel implementation for fast inference (support context and decoding stage).
 - Examples on 4-bit inference of an instruction-tuned model (Vicuna) and multi-modal LM (LLaVA).
+
+## News
+- [2023/07] 🔥 We added AWQ support and pre-computed search results for Llama-2 models (7B & 13B). Checkout our model zoo [here](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo)!
+- [2023/07] We extended the support for more LLM models including MPT, Falcon, and BLOOM. 
 
 ## Contents
 
