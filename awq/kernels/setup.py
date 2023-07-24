@@ -7,12 +7,17 @@ extra_compile_args = {
 }
 
 setup(
-    name="f16s4_gemm",
+    name="awq_inference_engine",
     packages=find_packages(),
     ext_modules=[
         CUDAExtension(
-            name="f16s4_gemm",
-            sources=["pybind.cpp", "gemm_cuda_gen.cu"],
+            name="awq_inference_engine",
+            sources=[
+                "csrc/pybind.cpp", 
+                "csrc/quantization/gemm_cuda_gen.cu",
+                "csrc/layernorm/layernorm.cu",
+                "csrc/position_embedding/pos_encoding_kernels.cu"
+            ],
             extra_compile_args=extra_compile_args,
         ),
     ],

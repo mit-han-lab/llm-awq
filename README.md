@@ -12,7 +12,13 @@ The current release supports:
 - Efficient CUDA kernel implementation for fast inference (support context and decoding stage).
 - Examples on 4-bit inference of an instruction-tuned model (Vicuna) and multi-modal LM (LLaVA).
 
+![TinyChat on RTX 4090: W4A16 is 2.3x faster than FP16](./tinychat/figures/4090_example.gif)
+
+Check out [TinyChat](tinychat), which delievers 2.3x faster inference performance for the **LLaMA-2** chatbot!
+
+
 ## News
+- [2023/07] 🔥 We released TinyChat, an efficient and minimal chatbot interface based on AWQ. LLama-2-chat models are supported! Check out our implementation [here](tinychat).
 - [2023/07] 🔥 We added AWQ support and pre-computed search results for Llama-2 models (7B & 13B). Checkout our model zoo [here](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo)!
 - [2023/07] We extended the support for more LLM models including MPT, Falcon, and BLOOM. 
 
@@ -40,7 +46,7 @@ pip install --upgrade pip  # enable PEP 660 support
 pip install -e .
 ```
 
-3. Install efficient W4A16 (4-bit weight, 16-bit activation) CUDA kernel
+3. Install efficient W4A16 (4-bit weight, 16-bit activation) CUDA kernel and optimized FP16 kernels (e.g. layernorm, positional encodings).
 ```
 cd awq/kernels
 python setup.py install

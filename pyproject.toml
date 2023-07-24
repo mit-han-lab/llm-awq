@@ -7,7 +7,7 @@ name = "awq"
 version = "0.1.0"
 description = "An efficient and accurate low-bit weight quantization(INT3/4) method for LLMs."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
@@ -15,8 +15,10 @@ classifiers = [
 dependencies = [
     "accelerate", "sentencepiece", "tokenizers>=0.12.1",
     "torch", "torchvision", 
-    "transformers>=4.28.0", 
-    "lm_eval"
+    "transformers>=4.31.0", 
+    "lm_eval", "texttable",
+    "toml", "attributedict",
+    "protobuf"
 ]
 
 [tool.setuptools.packages.find]

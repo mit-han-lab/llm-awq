@@ -1,7 +1,7 @@
 import math
 import torch
 import torch.nn as nn
-import f16s4_gemm  # with CUDA kernels
+import awq_inference_engine  # with CUDA kernels
 
 
 class ScaledActivation(nn.Module):
@@ -89,7 +89,7 @@ class WQLinear(nn.Module):
     @torch.no_grad()
     def forward(self, x):
         out_shape = x.shape[:-1] + (self.out_features, )
-        out = f16s4_gemm.gemm_forward_cuda(x.reshape(-1, x.shape[-1]), self.qweight, self.scales, self.qzeros, 8)
+        out = awq_inference_engine.gemm_forward_cuda(x.reshape(-1, x.shape[-1]), self.qweight, self.scales, self.qzeros, 8)
         out = out + self.bias if self.bias is not None else out
         return out.reshape(out_shape)
     
