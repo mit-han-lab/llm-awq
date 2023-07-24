@@ -40,6 +40,8 @@ pip install --upgrade pip  # enable PEP 660 support
 pip install -e .
 ```
 
+For edge devices like Orin, please modify [pyproject.toml](pyproject.toml) by commenting out [this line](https://github.com/mit-han-lab/llm-awq/blob/3fce69061682fdd528824e5da3d03a8a8b545f2a/pyproject.toml#L17). You will have to manually install precompiled PyTorch binaries from [NVIDIA](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048). 
+
 3. Install efficient W4A16 (4-bit weight, 16-bit activation) CUDA kernel
 ```
 cd awq/kernels
