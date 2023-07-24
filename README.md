@@ -18,7 +18,7 @@ Check out [TinyChat](tinychat), which delievers 2.3x faster inference performanc
 
 
 ## News
-- [2023/07] 🔥 We released TinyChat, an efficient and minimal chatbot interface based on AWQ. LLama-2-chat models are supported! Check out our implementation [here](tinychat).
+- [2023/07] 🔥 We released **TinyChat**, an efficient and minimal chatbot interface based on AWQ. TinyChat also enables edge LLM inference on Jetson Orin. LLama-2-chat models are supported! Check out our implementation [here](tinychat).
 - [2023/07] 🔥 We added AWQ support and pre-computed search results for Llama-2 models (7B & 13B). Checkout our model zoo [here](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo)!
 - [2023/07] We extended the support for more LLM models including MPT, Falcon, and BLOOM. 
 
