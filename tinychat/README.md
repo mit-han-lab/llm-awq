@@ -1,6 +1,6 @@
 # TinyChat: Efficient and Minimal Chatbot with AWQ
 
-We introduce TinyChat, a cutting-edge chatbot interface designed for minimal resource consumption and fast inference speed on GPU platforms. It allows for seamless deployment on low-power edge devices like the NVIDIA Jetson Orin, empowering users with a responsive conversational experience like never before.
+We introduce TinyChat, a cutting-edge chatbot interface designed for minimal resource consumption and fast inference speed on GPU platforms. It allows for seamless deployment on consumer-level GPUs such as 3090/4090 and low-power edge devices like the NVIDIA Jetson Orin, empowering users with a responsive conversational experience like never before.
 
 
 
