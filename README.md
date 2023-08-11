@@ -34,31 +34,29 @@ It also offers a turn-key solution for **on-device inferecne** of LLMs on **reso
 
 ## Install
 
-1. Clone this repository and navigate to AWQ folder
+Clone this repository and install with pip.
+
 ```
 git clone https://github.com/mit-han-lab/llm-awq
 cd llm-awq
-```
-
-2. Install Package
-```
-conda create -n awq python=3.10 -y
-conda activate awq
-pip install --upgrade pip  # enable PEP 660 support
 pip install -e .
 ```
 
-* For **edge devices** like Orin, before running the commands above, please:
+### CPU only
 
-    1. Modify [pyproject.toml](pyproject.toml) by commenting out [this line](https://github.com/mit-han-lab/llm-awq/blob/3fce69061682fdd528824e5da3d03a8a8b545f2a/pyproject.toml#L17).
-    2. Manually install precompiled PyTorch binaries (>=2.0.0) from [NVIDIA](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048).
-    3. Set the appropriate Python version for conda environment (e.g., `conda create -n awq python=3.8 -y` for JetPack 5).
-  
-3. Install efficient W4A16 (4-bit weight, 16-bit activation) CUDA kernel and optimized FP16 kernels (e.g. layernorm, positional encodings).
+If you want to avoid installing CUDA kernels, pass the BUILD_CUDA_EXT environment variable:
+
 ```
-cd awq/kernels
-python setup.py install
+BUILD_CUDA_EXT=0 pip install -e .
 ```
+
+### Edge device
+
+For **edge devices** like Orin, before running the commands above, please:
+
+1. Manually install precompiled PyTorch binaries (>=2.0.0) from [NVIDIA](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048).
+2. Set the appropriate Python version for conda environment (e.g., `conda create -n awq python=3.8 -y` for JetPack 5).
+3. Install AWQ: `TORCH_IS_PREBUILT=1 pip install -e .`
 
 ## AWQ Model Zoo
 
