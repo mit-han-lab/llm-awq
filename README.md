@@ -52,7 +52,7 @@ BUILD_CUDA_EXT=0 pip install -e .
 
 ### Edge device
 
-For **edge devices** like Orin, before running the commands above, please:
+For **edge devices** like Jetson Orin:
 
 1. Manually install precompiled PyTorch binaries (>=2.0.0) from [NVIDIA](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048).
 2. Set the appropriate Python version for conda environment (e.g., `conda create -n awq python=3.8 -y` for JetPack 5).
