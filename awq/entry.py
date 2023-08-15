@@ -5,6 +5,7 @@ import argparse
 import os
 import json
 from accelerate import init_empty_weights, infer_auto_device_map, dispatch_model, load_checkpoint_in_model
+from accelerate.utils.modeling import get_balanced_memory
 from awq.utils.parallel import auto_parallel
 from awq.quantize.pre_quant import run_awq, apply_awq
 from awq.quantize.quantizer import pseudo_quantize_model_weight, real_quantize_model_weight
@@ -162,7 +163,7 @@ def build_model_and_enc(model_path):
                 raise NotImplementedError
             
         # Move the model to GPU (as much as possible) for LM evaluation
-        kwargs = {"max_memory": max_memory} if len(max_memory) else {}
+        kwargs = {"max_memory": get_balanced_memory(model, max_memory if len(max_memory) > 0 else None)}
         device_map = infer_auto_device_map(
             model,
             # TODO: can we remove this?

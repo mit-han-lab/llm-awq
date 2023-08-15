@@ -213,11 +213,13 @@ def auto_scale_block(module, module_kwargs,
             module2inspect=module.self_attn, kwargs=module_kwargs,
         ))
         # attn out
-        scales_list.append(_auto_get_scale(
-            prev_op=module.self_attn.v_proj,
-            layers=[module.self_attn.o_proj],
-            inp=input_feat['self_attn.o_proj'],
-        ))
+        # Please refer to https://github.com/mit-han-lab/llm-awq/pull/67#issue-1850622696
+        if module.self_attn.v_proj.weight.shape == module.self_attn.o_proj.weight.shape:
+            scales_list.append(_auto_get_scale(
+                prev_op=module.self_attn.v_proj,
+                layers=[module.self_attn.o_proj],
+                inp=input_feat['self_attn.o_proj'],
+            ))
         # fc1
         scales_list.append(_auto_get_scale(
             prev_op=module.post_attention_layernorm,
