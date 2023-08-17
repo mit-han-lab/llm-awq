@@ -269,7 +269,7 @@ def auto_scale_block(module, module_kwargs,
         layers: list[dict] = MptAWQForCausalLM.get_layers_for_scaling(
             module, input_feat, module_kwargs
         )
-        layers_scaled = [_auto_get_scale(layer) for layer in layers]
+        layers_scaled = [_auto_get_scale(**layer) for layer in layers]
         scales_list.extend(layers_scaled)
 
     elif "falcon" in str(module.__class__).lower():         

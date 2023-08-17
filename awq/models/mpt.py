@@ -27,7 +27,7 @@ class MptAWQForCausalLM(BaseAWQForCausalLM):
 
         # linear 1
         layers.append(dict(
-            rev_op=module.norm_2,
+            prev_op=module.norm_2,
             layers=[module.ffn.up_proj],
             inp=input_feat['ffn.up_proj'],
             module2inspect=module.ffn
