@@ -19,13 +19,16 @@ class BaseAWQForCausalLM:
     def quantize(self, model, tokenizer=None, w_bit=4, q_config={}, n_samples=128, seqlen=512,
                        auto_scale=True, mse_range=True, run_search=False, run_quant=True,
                        calib_data="pileval", init_only=False):
-        
+        search_result = None
+
         if run_search:
-            self._awq_search(model, tokenizer, w_bit, q_config, n_samples=n_samples, seqlen=seqlen,
+            search_result = self._awq_search(model, tokenizer, w_bit, q_config, n_samples=n_samples, seqlen=seqlen,
                        auto_scale=auto_scale, mse_range=mse_range, calib_data=calib_data)
         
         if run_quant:
             self._awq_quant(model, w_bit, q_config, init_only)
+        
+        return search_result
     
     
     def _awq_quant(self, model, w_bit, q_config, init_only):
@@ -118,7 +121,7 @@ class BaseAWQForCausalLM:
         }
 
         # Run AWQ search layer by layer
-        for i in tqdm(range(len(layers)), desc="AWQ Search:"):
+        for i in tqdm(range(len(layers)), desc="AWQ Search"):
             layer = layers[i]
             layer = layer.cuda()
             named_linears = get_named_linears(layer)

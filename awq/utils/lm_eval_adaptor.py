@@ -6,13 +6,13 @@ import fnmatch
 
 class LMEvalAdaptor(BaseLM):
 
-    def __init__(self, model_name, model, tokenizer, batch_size=1, max_length=-1):
+    def __init__(self, model_name, model, tokenizer, device, batch_size=1, max_length=-1):
         super().__init__()
 
         assert isinstance(batch_size, int)
 
         self.model_name = model_name
-        self.model = model
+        self.model = model.to(device)
         self.model.eval()
 
         self.tokenizer = tokenizer
