@@ -18,13 +18,17 @@ class AutoAWQForCausalLM:
                                'AutoAWQForCausalLM.from_quantized or AutoAWQForCausalLM.from_pretrained')
     
     @classmethod
-    def from_pretrained():
-        pass
+    def from_pretrained(self, model_path, trust_remote_code=True):
+        model_type = check_and_get_model_type(model_path, trust_remote_code)
+
+        return AWQ_CAUSAL_LM_MODEL_MAP[model_type].from_pretrained(
+            model_path, model_type, trust_remote_code=trust_remote_code
+        )
 
     @classmethod
     def from_quantized(self, model_path, quant_path, w_bit, q_config, device, trust_remote_code=True):
         model_type = check_and_get_model_type(model_path, trust_remote_code)
 
-        return AWQ_CAUSAL_LM_MODEL_MAP[model_type]().from_quantized(
-            model_path, quant_path, w_bit, q_config, device
+        return AWQ_CAUSAL_LM_MODEL_MAP[model_type].from_quantized(
+            model_path, quant_path, w_bit, q_config, device, trust_remote_code
         )

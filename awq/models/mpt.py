@@ -3,10 +3,12 @@ from .base import BaseAWQForCausalLM
 class MptAWQForCausalLM(BaseAWQForCausalLM):
     layer_type = "MPTBlock"
 
-    def get_model_layers(self, model):
+    @staticmethod
+    def get_model_layers(model):
         return model.transformer.blocks
     
-    def get_layers_for_scaling(self, module, input_feat, module_kwargs):
+    @staticmethod
+    def get_layers_for_scaling(module, input_feat, module_kwargs):
         layers = []
 
         # attention input
@@ -42,16 +44,19 @@ class MptAWQForCausalLM(BaseAWQForCausalLM):
 
         return layers
     
-    def get_act_from_layer(self, layer):
+    @staticmethod
+    def get_act_from_layer(layer):
         return layer.ffn.act
     
-    def get_act_for_scaling(self, module):
+    @staticmethod
+    def get_act_for_scaling(module):
         return dict(
             scale_name="ffn.act",
             scale_layer=module.ffn.act,
             scale_shape=module.ffn.up_proj.out_features
         )
     
-    def move_embed(self, model, device):
+    @staticmethod
+    def move_embed(model, device):
         model.transformer.wte = model.transformer.wte.to(device)
         model.transformer.emb_drop = model.transformer.emb_drop.to(device)

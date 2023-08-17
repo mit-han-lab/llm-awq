@@ -15,6 +15,11 @@ from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 from awq.utils.module import append_str_prefix, get_op_name, get_named_linears, set_op_by_name
 
 class BaseAWQForCausalLM:
+    def __init__(self, model, model_type, is_quantized):
+        self.model = model
+        self.model_type = model_type
+        self.is_quantized = is_quantized
+
     @torch.no_grad()
     def quantize(self, model, tokenizer=None, w_bit=4, q_config={}, n_samples=128, seqlen=512,
                        auto_scale=True, mse_range=True, run_search=False, run_quant=True,
@@ -39,7 +44,7 @@ class BaseAWQForCausalLM:
         for i in tqdm(range(len(layers)), desc="AWQ Quantization"):
             layer = layers[i]
             named_linears = get_named_linears(layer)
-            self._scale_activations(layer)
+            self._scale_activations(self, layer)
 
             for name, module in named_linears.items():
                 module.cuda()
@@ -167,9 +172,21 @@ class BaseAWQForCausalLM:
     def save_quantized():
         pass
 
-    def from_pretrained():
-        pass
+    @classmethod
+    def from_pretrained(self, model_path, model_type, torch_dtype: torch.dtype = torch.float16, trust_remote_code=True):
+        # Load config
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
 
+        # Load empty weights
+        with init_empty_weights():
+            model = AutoModelForCausalLM.from_config(config=config, torch_dtype=torch.float16, trust_remote_code=True)
+        
+        # Load model weights
+        model = load_checkpoint_and_dispatch(model, model_path, device_map="balanced", no_split_module_classes=[self.layer_type])
+
+        return self(model, model_type, is_quantized=False)
+
+    @classmethod
     def from_quantized(self, model_path, quant_path, w_bit, q_config, device, trust_remote_code=True):
         # Load config
         config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
@@ -183,7 +200,7 @@ class BaseAWQForCausalLM:
         for i in tqdm(range(len(layers)), desc="Replacing layers..."):
             layer = layers[i]
             named_linears = get_named_linears(layer)
-            self._scale_activations(layer)
+            self._scale_activations(self, layer)
 
             for name, module in named_linears.items():
                 q_linear = WQLinear.from_linear(
@@ -196,10 +213,11 @@ class BaseAWQForCausalLM:
         
         model.tie_weights()
 
-        model = load_checkpoint_and_dispatch(model, quant_path, device_map="balanced")
+        model = load_checkpoint_and_dispatch(model, quant_path, device_map="balanced", no_split_module_classes=[self.layer_type])
 
         return model
     
+    @staticmethod
     def _scale_activations(self, layer):
         act_function = self.get_act_from_layer(layer)
 

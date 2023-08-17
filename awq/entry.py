@@ -2,37 +2,12 @@ import os
 import torch
 import argparse
 from lm_eval import evaluator
+from transformers import AutoTokenizer
+from awq.models.auto import AutoAWQForCausalLM
 from awq.quantize.auto_clip import apply_clip
 from awq.quantize.auto_scale import apply_scale
 from awq.utils.lm_eval_adaptor import LMEvalAdaptor
-from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 
-def get_awq_model(model):
-    from awq.models import MptAWQForCausalLM
-
-    if "mpt" in str(model.__class__).lower():
-        return MptAWQForCausalLM()
-    else:
-        raise NotImplementedError(type(model))
-
-def load_unquantized(model_path):
-    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
-    tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name, trust_remote_code=True)
-
-    kwargs = {"torch_dtype": torch.float16, "low_cpu_mem_usage": True}
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path, config=config, trust_remote_code=True, **kwargs)
-
-    model.eval()
-
-    return model, tokenizer
-
-def load_quantized(model_path, quant_path, w_bit, q_config, device):
-    from awq.models.auto import AutoAWQForCausalLM
-    model = AutoAWQForCausalLM.from_quantized(model_path, quant_path, w_bit, q_config, device)
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-
-    return model, tokenizer
 
 def load_search_result_into_memory(model, search_path):
     awq_results = torch.load(search_path, map_location="cpu")
@@ -41,27 +16,27 @@ def load_search_result_into_memory(model, search_path):
     apply_clip(model, awq_results["clip"])
 
 def run_search(model_path, dump_path, w_bit, q_config):
-    model, tokenizer = load_unquantized(model_path)
-    awq_model = get_awq_model(model)
-    awq_results = awq_model.quantize(model, tokenizer, w_bit=w_bit, q_config=q_config, run_search=True, run_quant=False)
+    model = AutoAWQForCausalLM.from_pretrained(model_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    awq_results = model.quantize(model.model, tokenizer, w_bit=w_bit, q_config=q_config, run_search=True, run_quant=False)
 
     dirpath = os.path.dirname(dump_path)
     os.makedirs(dirpath, exist_ok=True)
     torch.save(awq_results, dump_path)
 
-def run_quant(model_path, search_path, dump_path, w_bit, q_config, device):
-    model, tokenizer = load_unquantized(model_path, device)
-    load_search_result_into_memory(model, search_path)
-
-    awq_model = get_awq_model(model)
-    awq_model.quantize(model, w_bit=w_bit, q_config=q_config, run_search=False, run_quant=True)
+def run_quant(model_path, search_path, dump_path, w_bit, q_config):
+    model = AutoAWQForCausalLM.from_pretrained(model_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    load_search_result_into_memory(model.model, search_path)
+    model.quantize(model.model, w_bit=w_bit, q_config=q_config, run_search=False, run_quant=True)
 
     dirpath = os.path.dirname(dump_path)
     os.makedirs(dirpath, exist_ok=True)
-    torch.save(model.cpu().state_dict(), dump_path)
+    torch.save(model.model.cpu().state_dict(), dump_path)
 
 def run_perplexity(model_path, quant_path, w_bit, q_config, device):
-    model, tokenizer = load_quantized(model_path, quant_path, w_bit, q_config, device)
+    model = AutoAWQForCausalLM.from_quantized(model_path, quant_path, w_bit, q_config, device)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
     lm_eval_model = LMEvalAdaptor(model_path, model, tokenizer, device, batch_size=1)
     results = evaluator.simple_evaluate(
