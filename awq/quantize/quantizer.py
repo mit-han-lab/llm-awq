@@ -1,7 +1,4 @@
 import torch
-from tqdm import tqdm
-EMBEDDING_KEYWORDS = ["embed"]
-LM_HEAD_KEYWORDS = ["lm_head", "embed_out", "output"]
     
 # core quantization method (simulated quantization)
 def pseudo_quantize_tensor(w, n_bit=8,
@@ -47,24 +44,3 @@ def pseudo_quantize_tensor(w, n_bit=8,
         return w, scales.view(w.shape[0], -1), zeros.view(w.shape[0], -1)
     else:
         return w
-
-@torch.no_grad()
-def pseudo_quantize_model_weight(
-    model, w_bit, q_config,
-):    
-    from .pre_quant import get_blocks, get_named_linears
-    layers = get_blocks(model)
-    for i in tqdm(range(len(layers)), desc="pseudo weight quantization..."):
-        named_linears = get_named_linears(layers[i])
-        for n, m in named_linears.items():
-            m.cuda()
-            m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=w_bit, **q_config)
-            m.cpu()
-
-
-@torch.no_grad()
-def real_quantize_model_weight(model, awq_model):
-    layers = awq_model.get_model_layers(model)
-    for i in tqdm(range(len(layers)), desc="real weight quantization..."):
-        layer = layers[i]
-        del layer
