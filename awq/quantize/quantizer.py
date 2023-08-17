@@ -4,7 +4,6 @@ from tqdm import tqdm
 import gc
 from .qmodule import ScaledActivation
 from ..utils.module import set_op_by_name
-from ..models import MptAWQForCausalLM
 
 from transformers.models.bloom.modeling_bloom import BloomBlock
 
@@ -30,7 +29,7 @@ def scale_activations(module):
             return
         
         # get activation scale
-        scale_dict = MptAWQForCausalLM.get_act_for_scaling(module)
+        scale_dict = MptAWQForCausalLM().get_act_for_scaling(module)
         scale_like = torch.ones(scale_dict['scale_shape'], dtype=dtype, device=device)
 
         # scale activation

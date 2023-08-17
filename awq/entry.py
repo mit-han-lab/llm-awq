@@ -7,11 +7,11 @@ import json
 from accelerate import init_empty_weights, infer_auto_device_map, dispatch_model, load_checkpoint_in_model
 from accelerate.utils.modeling import get_balanced_memory
 from awq.utils.parallel import auto_parallel
-from awq.quantize.pre_quant import run_awq, apply_awq
 from awq.quantize.quantizer import pseudo_quantize_model_weight, real_quantize_model_weight
 from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
-
+from awq.quantize.auto_clip import apply_clip
+from awq.quantize.auto_scale import apply_scale
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_path', type=str, help='path of the hf model')
@@ -65,7 +65,13 @@ q_config = {
 }
 print("Quantization config:", q_config)
 
-# build model and tokenizer
+def get_awq_model(model):
+    from awq.models import MptAWQForCausalLM
+
+    if "mpt" in str(model.__class__).lower():
+        return MptAWQForCausalLM()
+    else:
+        raise NotImplementedError(type(model))
 
 def build_model_and_enc(model_path):
     if not os.path.exists(model_path):  # look into ssd
@@ -119,12 +125,10 @@ def build_model_and_enc(model_path):
 
         if args.run_awq:
             assert args.dump_awq, "Please save the awq results with --dump_awq"
-                        
-            awq_results = run_awq(
-                model, enc,
-                w_bit=args.w_bit, q_config=q_config,
-                n_samples=128, seqlen=512,
-            )
+            
+            awq_model = get_awq_model(model)
+            awq_results = awq_model.quantize(model, enc, args.w_bit, q_config)
+            
             if args.dump_awq:
                 dirpath = os.path.dirname(args.dump_awq)
                 os.makedirs(dirpath, exist_ok=True)
@@ -137,7 +141,9 @@ def build_model_and_enc(model_path):
         if args.load_awq:
             print("Loading pre-computed AWQ results from", args.load_awq)
             awq_results = torch.load(args.load_awq, map_location="cpu")
-            apply_awq(model, awq_results)
+            
+            apply_scale(model, awq_results["scale"])
+            apply_clip(model, awq_results["clip"])
 
         # weight quantization
         if args.w_bit is not None:
