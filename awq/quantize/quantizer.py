@@ -4,6 +4,7 @@ from tqdm import tqdm
 import gc
 from .qmodule import ScaledActivation
 from ..utils.module import set_op_by_name
+from ..models import MptAWQForCausalLM
 
 from transformers.models.bloom.modeling_bloom import BloomBlock
 
@@ -27,12 +28,15 @@ def scale_activations(module):
     elif 'mptblock' in str(module.__class__.__name__).lower():
         if isinstance(module.ffn.act, ScaledActivation):
             return
-        c = module.ffn.up_proj.out_features
-        act = ScaledActivation(
-            module.ffn.act, 
-            torch.ones(c, dtype=dtype, device=device)
-        )
-        set_op_by_name(module, "ffn.act", act)
+        
+        # get activation scale
+        scale_dict = MptAWQForCausalLM.get_act_for_scaling(module)
+        scale_like = torch.ones(scale_dict['scale_shape'], dtype=dtype, device=device)
+
+        # scale activation
+        scaled_act = ScaledActivation(scale_dict['scale_layer'], scale_like)
+        set_op_by_name(module, scale_dict['scale_name'], scaled_act)
+
     elif 'falcon' in str(module.__class__).lower():
         if isinstance(module.mlp.act, ScaledActivation):
             return

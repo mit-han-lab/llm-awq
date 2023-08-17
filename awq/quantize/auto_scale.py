@@ -8,6 +8,7 @@ from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMS
 
 from .qmodule import ScaledActivation
 from ..utils.module import get_op_by_name, get_op_name, set_op_by_name
+from ..models import MptAWQForCausalLM
 
 __all__ = ["auto_scale_block", "apply_scale"]
 
@@ -265,34 +266,11 @@ def auto_scale_block(module, module_kwargs,
             inp=input_feat['mlp.dense_4h_to_h'],
         ))
     elif "mpt" in str(module.__class__).lower():
-        # attention input
-        scales_list.append(_auto_get_scale(
-            prev_op=module.norm_1,
-            layers=[module.attn.Wqkv],
-            inp=input_feat['attn.Wqkv'],
-            module2inspect=module.attn, 
-            kwargs=module_kwargs,
-        ))
-        
-        # attn out
-        scales_list.append(_auto_get_scale(
-            prev_op=module.attn.Wqkv,
-            layers=[module.attn.out_proj],
-            inp=input_feat['attn.out_proj'],
-        ))
-        # fc1
-        scales_list.append(_auto_get_scale(
-            prev_op=module.norm_2,
-            layers=[module.ffn.up_proj],
-            inp=input_feat['ffn.up_proj'],
-            module2inspect=module.ffn,
-        ))
-        # fc2
-        scales_list.append(_auto_get_scale(
-            prev_op=module.ffn.act,
-            layers=[module.ffn.down_proj],
-            inp=input_feat['ffn.down_proj'],
-        ))
+        layers: list[dict] = MptAWQForCausalLM.get_layers_for_scaling(
+            module, input_feat, module_kwargs
+        )
+        layers_scaled = [_auto_get_scale(layer) for layer in layers]
+        scales_list.extend(layers_scaled)
 
     elif "falcon" in str(module.__class__).lower():         
         # attn out

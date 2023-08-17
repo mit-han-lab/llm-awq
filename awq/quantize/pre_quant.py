@@ -11,6 +11,7 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 from .auto_scale import auto_scale_block, apply_scale
 from .auto_clip import auto_clip_block, apply_clip
+from ..models import MptAWQForCausalLM
 
 __all__ = ["run_awq"]
 
@@ -27,7 +28,7 @@ def get_blocks(model):
     elif isinstance(model, BloomForCausalLM):
         layers = model.transformer.h
     elif "mpt" in str(model.__class__).lower():
-        layers = model.transformer.blocks
+        layers = MptAWQForCausalLM.get_model_layers(model)
     elif "falcon" in str(model.__class__).lower():
         layers = model.transformer.h
     else:
@@ -44,8 +45,7 @@ def move_embed(model, device):
         model.transformer.word_embeddings = model.transformer.word_embeddings.to(device)
         model.transformer.word_embeddings_layernorm = model.transformer.word_embeddings_layernorm.to(device)
     elif "mpt" in str(model.__class__).lower():
-        model.transformer.wte = model.transformer.wte.to(device)
-        model.transformer.emb_drop = model.transformer.emb_drop.to(device)
+        MptAWQForCausalLM.move_embed(model, device)
     elif "falcon" in str(model.__class__).lower():
         model.transformer.word_embeddings = model.transformer.word_embeddings.to(device)
     else:
