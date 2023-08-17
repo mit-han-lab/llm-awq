@@ -1,22 +1,77 @@
 import gc
-import tqdm
 import torch
 import functools
 import torch.nn as nn
+from tqdm import tqdm
 from collections import defaultdict
 
 from awq.utils.calib_data import get_calib_dataset
 from awq.quantize.auto_clip import auto_clip_block, apply_clip
 from awq.quantize.auto_scale import auto_scale_block, apply_scale
-from awq.utils.module import append_str_prefix, get_op_name, get_named_linears
+from awq.utils.module import append_str_prefix, get_op_name, get_named_linears, set_op_by_name
 
+from awq.quantize.quantizer import pseudo_quantize_tensor
+from awq.quantize.qmodule import WQLinear, ScaledActivation
 
 class BaseAWQForCausalLM:
     
     @torch.no_grad()
-    def quantize(self, model, tokenizer, w_bit, q_config, n_samples=128, seqlen=512,
-                       auto_scale=True, mse_range=True, calib_data="pileval"):
+    def quantize(self, model, tokenizer=None, w_bit=4, q_config={}, n_samples=128, seqlen=512,
+                       auto_scale=True, mse_range=True, run_search=False, run_quant=True,
+                       calib_data="pileval", init_only=False):
+        
+        if run_search:
+            self._awq_search(model, tokenizer, w_bit, q_config, n_samples=n_samples, seqlen=seqlen,
+                       auto_scale=auto_scale, mse_range=mse_range, calib_data=calib_data)
+        
+        if run_quant:
+            self._awq_quant(model, w_bit, q_config, init_only)
+    
+    
+    def _awq_quant(self, model, w_bit, q_config, init_only):
+        assert q_config["zero_point"], "We only support zero_point quantization now."
+        layers = self.get_model_layers(model)
 
+        # Run AWQ quantization
+        for i in tqdm(range(len(layers)), desc="AWQ Quantization"):
+            layer = layers[i]
+            named_linears = get_named_linears(layer)
+            
+            if not isinstance(layer.ffn.act, ScaledActivation):
+                param = next(layer.parameters())
+
+                # get activation scale
+                scale_dict = self.get_act_for_scaling(layer)
+                scale_like = torch.ones(scale_dict['scale_shape'], dtype=param.dtype, device=param.device)
+
+                # scale activation
+                scaled_act = ScaledActivation(scale_dict['scale_layer'], scale_like)
+                set_op_by_name(layer, scale_dict['scale_name'], scaled_act)
+
+            for name, module in named_linears.items():
+                if init_only:
+                    q_linear = WQLinear.from_linear(
+                        module, w_bit, q_config['q_group_size'], True)
+                    q_linear.to(next(layer.parameters()).device)
+                    set_op_by_name(layer, name, q_linear)
+                else:
+                    module.cuda()
+                    module.weight.data, scales, zeros = pseudo_quantize_tensor(module.weight.data, n_bit=w_bit, get_scale_zp=True, **q_config)
+                    scales = scales.t().contiguous()
+                    zeros = zeros.t().contiguous()
+                    q_linear = WQLinear.from_linear(
+                        module, w_bit, q_config['q_group_size'], False, scales, zeros)
+                    module.cpu()
+                    q_linear.to(next(layer.parameters()).device)
+                    set_op_by_name(layer, name, q_linear)
+                    torch.cuda.empty_cache()
+                    gc.collect()
+            
+            torch.cuda.empty_cache()
+            gc.collect()
+    
+    def _awq_search(self, model, tokenizer, w_bit, q_config, n_samples=128, seqlen=512,
+                       auto_scale=True, mse_range=True, calib_data="pileval"):
         layers = self.get_model_layers(model)
 
         samples = get_calib_dataset(
@@ -62,8 +117,8 @@ class BaseAWQForCausalLM:
             "clip": [],
         }
 
-        # solve layer by layer
-        for i in tqdm.tqdm(range(len(layers)), desc="Running AWQ..."):
+        # Run AWQ search layer by layer
+        for i in tqdm(range(len(layers)), desc="AWQ Search:"):
             layer = layers[i]
             layer = layer.cuda()
             named_linears = get_named_linears(layer)
@@ -119,7 +174,7 @@ class BaseAWQForCausalLM:
             del input_feat
             gc.collect()
             torch.cuda.empty_cache()
-            
+        
         return awq_results
 
     def save_quantized():
