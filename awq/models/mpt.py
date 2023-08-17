@@ -42,6 +42,9 @@ class MptAWQForCausalLM(BaseAWQForCausalLM):
 
         return layers
     
+    def get_act_from_layer(self, layer):
+        return layer.ffn.act
+    
     def get_act_for_scaling(self, module):
         return dict(
             scale_name="ffn.act",

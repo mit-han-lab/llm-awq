@@ -6,15 +6,15 @@ from tqdm import tqdm
 from collections import defaultdict
 
 from awq.utils.calib_data import get_calib_dataset
-from awq.quantize.auto_clip import auto_clip_block, apply_clip
-from awq.quantize.auto_scale import auto_scale_block, apply_scale
-from awq.utils.module import append_str_prefix, get_op_name, get_named_linears, set_op_by_name
-
+from transformers import AutoModelForCausalLM, AutoConfig
 from awq.quantize.quantizer import pseudo_quantize_tensor
 from awq.quantize.qmodule import WQLinear, ScaledActivation
+from awq.quantize.auto_clip import auto_clip_block, apply_clip
+from awq.quantize.auto_scale import auto_scale_block, apply_scale
+from accelerate import init_empty_weights, load_checkpoint_and_dispatch
+from awq.utils.module import append_str_prefix, get_op_name, get_named_linears, set_op_by_name
 
 class BaseAWQForCausalLM:
-    
     @torch.no_grad()
     def quantize(self, model, tokenizer=None, w_bit=4, q_config={}, n_samples=128, seqlen=512,
                        auto_scale=True, mse_range=True, run_search=False, run_quant=True,
@@ -186,5 +186,46 @@ class BaseAWQForCausalLM:
     def from_pretrained():
         pass
 
-    def from_quantized():
-        pass
+    def from_quantized(self, model_path, quant_path, w_bit, q_config, device, trust_remote_code=True):
+        # Load config
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
+
+        with init_empty_weights():
+            model = AutoModelForCausalLM.from_config(config=config, torch_dtype=torch.float16, trust_remote_code=True)
+
+        # Initialize layers
+        assert q_config["zero_point"], "We only support zero_point quantization now."
+        layers = self.get_model_layers(model)
+        for i in tqdm(range(len(layers)), desc="Replacing layers..."):
+            layer = layers[i]
+            named_linears = get_named_linears(layer)
+            self._scale_activations(layer)
+
+            for name, module in named_linears.items():
+                q_linear = WQLinear.from_linear(
+                    module, w_bit, q_config['q_group_size'], True)
+                q_linear.to(next(layer.parameters()).device)
+                set_op_by_name(layer, name, q_linear)
+            
+            torch.cuda.empty_cache()
+            gc.collect()
+        
+        model.tie_weights()
+
+        model = load_checkpoint_and_dispatch(model, quant_path, device_map="balanced")
+
+        return model
+    
+    def _scale_activations(self, layer):
+        act_function = self.get_act_from_layer(layer)
+
+        if act_function is not None and not isinstance(act_function, ScaledActivation):
+            param = next(layer.parameters())
+
+            # get activation scale
+            scale_dict = self.get_act_for_scaling(layer)
+            scale_like = torch.ones(scale_dict['scale_shape'], dtype=param.dtype, device=param.device)
+
+            # scale activation
+            scaled_act = ScaledActivation(scale_dict['scale_layer'], scale_like)
+            set_op_by_name(layer, scale_dict['scale_name'], scaled_act)

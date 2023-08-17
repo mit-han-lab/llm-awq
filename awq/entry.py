@@ -27,8 +27,12 @@ def load_unquantized(model_path):
 
     return model, tokenizer
 
-def load_quantized(model_path):
-    awq_model = get_awq_model(model)
+def load_quantized(model_path, quant_path, w_bit, q_config, device):
+    from awq.models.auto import AutoAWQForCausalLM
+    model = AutoAWQForCausalLM.from_quantized(model_path, quant_path, w_bit, q_config, device)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+
+    return model, tokenizer
 
 def load_search_result_into_memory(model, search_path):
     awq_results = torch.load(search_path, map_location="cpu")
@@ -56,8 +60,8 @@ def run_quant(model_path, search_path, dump_path, w_bit, q_config, device):
     os.makedirs(dirpath, exist_ok=True)
     torch.save(model.cpu().state_dict(), dump_path)
 
-def run_perplexity(model_path, device):
-    model, tokenizer = load_unquantized(model_path)
+def run_perplexity(model_path, quant_path, w_bit, q_config, device):
+    model, tokenizer = load_quantized(model_path, quant_path, w_bit, q_config, device)
 
     lm_eval_model = LMEvalAdaptor(model_path, model, tokenizer, device, batch_size=1)
     results = evaluator.simple_evaluate(
@@ -91,6 +95,6 @@ if __name__ == '__main__':
     elif args.entry_type == 'quant':
         run_quant(args.model_path, args.search_path, args.quant_path, args.w_bit, q_config)
     elif args.entry_type == 'perplexity':
-        run_perplexity(args.model_path, args.device)
+        run_perplexity(args.model_path, args.quant_path, args.w_bit, q_config, args.device)
     else:
         raise Exception('--entry_type must be one of (search|quant|perplexity)')
