@@ -39,14 +39,16 @@ class LlamaAWQForCausalLM(BaseAWQForCausalLM):
                 layers=[module.self_attn.o_proj],
                 inp=input_feat['self_attn.o_proj'],
             ))
-        # fc1
+        
+        # linear 1
         layers.append(dict(
             prev_op=module.post_attention_layernorm,
             layers=[module.mlp.gate_proj, module.mlp.up_proj],
             inp=input_feat['mlp.gate_proj'],
             module2inspect=module.mlp,
         ))
-        # fc2
+
+        # linear 2
         layers.append(dict(
             prev_op=module.mlp.up_proj,
             layers=[module.mlp.down_proj],
