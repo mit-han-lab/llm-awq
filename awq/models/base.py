@@ -1,3 +1,4 @@
+import os
 import gc
 import torch
 import functools
@@ -5,8 +6,9 @@ import torch.nn as nn
 from tqdm import tqdm
 from collections import defaultdict
 
+from huggingface_hub import snapshot_download
 from awq.utils.calib_data import get_calib_dataset
-from transformers import AutoModelForCausalLM, AutoConfig
+from transformers import AutoModelForCausalLM, AutoConfig, PreTrainedModel
 from awq.quantize.quantizer import pseudo_quantize_tensor
 from awq.quantize.qmodule import WQLinear, ScaledActivation
 from awq.quantize.auto_clip import auto_clip_block, apply_clip
@@ -16,29 +18,27 @@ from awq.utils.module import append_str_prefix, get_op_name, get_named_linears, 
 
 class BaseAWQForCausalLM:
     def __init__(self, model, model_type, is_quantized):
-        self.model = model
-        self.model_type = model_type
-        self.is_quantized = is_quantized
+        self.model:PreTrainedModel = model
+        self.model_type:str = model_type
+        self.is_quantized:bool = is_quantized
+        self.search_result = None
 
     @torch.no_grad()
-    def quantize(self, model, tokenizer=None, w_bit=4, q_config={}, n_samples=128, seqlen=512,
+    def quantize(self, tokenizer=None, w_bit=4, q_config={}, n_samples=128, seqlen=512,
                        auto_scale=True, mse_range=True, run_search=False, run_quant=True,
                        calib_data="pileval"):
-        search_result = None
 
         if run_search:
-            search_result = self._awq_search(model, tokenizer, w_bit, q_config, n_samples=n_samples, seqlen=seqlen,
+            self.search_result = self._awq_search(tokenizer, w_bit, q_config, n_samples=n_samples, seqlen=seqlen,
                        auto_scale=auto_scale, mse_range=mse_range, calib_data=calib_data)
         
         if run_quant:
-            self._awq_quant(model, w_bit, q_config)
-        
-        return search_result
+            self._awq_quant(w_bit, q_config)
     
     
-    def _awq_quant(self, model, w_bit, q_config):
+    def _awq_quant(self, w_bit, q_config):
         assert q_config["zero_point"], "We only support zero_point quantization now."
-        layers = self.get_model_layers(model)
+        layers = self.get_model_layers(self.model)
 
         # Run AWQ quantization
         for i in tqdm(range(len(layers)), desc="AWQ Quantization"):
@@ -62,9 +62,9 @@ class BaseAWQForCausalLM:
             torch.cuda.empty_cache()
             gc.collect()
     
-    def _awq_search(self, model, tokenizer, w_bit, q_config, n_samples=128, seqlen=512,
+    def _awq_search(self, tokenizer, w_bit, q_config, n_samples=128, seqlen=512,
                        auto_scale=True, mse_range=True, calib_data="pileval"):
-        layers = self.get_model_layers(model)
+        layers = self.get_model_layers(self.model)
 
         samples = get_calib_dataset(
             data=calib_data, tokenizer=tokenizer, n_samples=n_samples, block_size=seqlen)
@@ -74,7 +74,7 @@ class BaseAWQForCausalLM:
         layer_kwargs = {}
 
         layers[0] = layers[0].cuda()
-        self.move_embed(model, "cuda")
+        self.move_embed(self.model, "cuda")
         
         # get input and kwargs to layer 0
         # with_kwargs is only supported in PyTorch 2.0
@@ -92,7 +92,7 @@ class BaseAWQForCausalLM:
         # patch layer 0 to catch input and kwargs
         layers[0] = Catcher(layers[0])
         try:
-            model(samples.to(next(model.parameters()).device))
+            self.model(samples.to(next(self.model.parameters()).device))
         except ValueError:  # work with early exit
             pass
         del samples
@@ -100,7 +100,7 @@ class BaseAWQForCausalLM:
         inps = inps[0]
 
         layers[0] = layers[0].cpu()
-        self.move_embed(model, "cpu")
+        self.move_embed(self.model, "cpu")
         
         gc.collect()
         torch.cuda.empty_cache()
@@ -148,7 +148,7 @@ class BaseAWQForCausalLM:
                 # apply_scale(layer, scales_list, input_feat_dict=input_feat)
                 apply_scale(layers[i], scales_list, input_feat_dict=input_feat)
                 # append prefix to make names global
-                awq_results["scale"] += append_str_prefix(scales_list, get_op_name(model, layer) + ".")
+                awq_results["scale"] += append_str_prefix(scales_list, get_op_name(self.model, layer) + ".")
 
             # Clear GPU memory
             torch.cuda.empty_cache()
@@ -159,7 +159,7 @@ class BaseAWQForCausalLM:
                                 input_feat=input_feat,)
                 apply_clip(layer, clip_list)
                 # append prefix to make names global
-                awq_results["clip"] += append_str_prefix(clip_list, get_op_name(model, layer) + ".")
+                awq_results["clip"] += append_str_prefix(clip_list, get_op_name(self.model, layer) + ".")
 
             layer = layer.cpu()
             # Haotian: check activation replacement
@@ -169,39 +169,77 @@ class BaseAWQForCausalLM:
         
         return awq_results
 
-    def save_quantized():
-        pass
+    def save_quantized(self, save_dir):
+        save_dir = save_dir[:-1] if save_dir[-1] == '/' else save_dir
+
+        # Save model
+        if self.search_result is None:
+            self.model.save_pretrained(save_dir, state_dict=self.model.state_dict())
+        else:
+            self.model.save_pretrained(save_dir, state_dict=self.search_result)
+        
+        # TODO: Rename model name & save quant_config
+        if self.search_result is not None:
+            model_name = 'awq_model_search_result.pt'
+        else:
+            model_name = 'awq_model_w4_g128.pt'
 
     @classmethod
-    def from_pretrained(self, model_path, model_type, torch_dtype: torch.dtype = torch.float16, trust_remote_code=True):
+    def from_pretrained(self, model_path, model_type, torch_dtype: torch.dtype = torch.float16, 
+                        trust_remote_code=True):
+        return self.from_quantized(
+            model_path, 
+            model_type, 
+            quant_file='', 
+            device='balanced', 
+            torch_dtype=torch_dtype, 
+            trust_remote_code=trust_remote_code, 
+            is_quantized=False
+        )
+
+    @classmethod
+    def from_quantized(self, model_path, model_type, quant_file, w_bit=4, q_config={}, 
+                       device='balanced', torch_dtype=torch.float16, trust_remote_code=True, is_quantized=True):
+        # Download model
+        model_path = snapshot_download(model_path)
+        quant_path = model_path + f'/{quant_file}' if is_quantized else model_path
+
         # Load config
         config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
 
         # Load empty weights
         with init_empty_weights():
-            model = AutoModelForCausalLM.from_config(config=config, torch_dtype=torch.float16, trust_remote_code=True)
+            model = AutoModelForCausalLM.from_config(config=config, torch_dtype=torch_dtype, trust_remote_code=trust_remote_code)
+        
+        # Only need to replace layers if a model is AWQ quantized 
+        if is_quantized:
+            # Prepare WQLinear layers, replace nn.Linear
+            self._load_quantized_modules(self, model, w_bit, q_config)
+        
+        model.tie_weights()
         
         # Load model weights
-        model = load_checkpoint_and_dispatch(model, model_path, device_map="balanced", no_split_module_classes=[self.layer_type])
+        model = load_checkpoint_and_dispatch(model, quant_path, device_map=device, no_split_module_classes=[self.layer_type])
 
-        return self(model, model_type, is_quantized=False)
+        return self(model, model_type, is_quantized=is_quantized)
 
-    @classmethod
-    def from_quantized(self, model_path, quant_path, w_bit, q_config, device, trust_remote_code=True):
-        # Load config
-        config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
-
-        with init_empty_weights():
-            model = AutoModelForCausalLM.from_config(config=config, torch_dtype=torch.float16, trust_remote_code=True)
-
-        # Initialize layers
+    def _load_quantized_modules(self, model, w_bit, q_config):
+        # Real quantization of weights
         assert q_config["zero_point"], "We only support zero_point quantization now."
+        
+        # Get blocks of model
         layers = self.get_model_layers(model)
+
         for i in tqdm(range(len(layers)), desc="Replacing layers..."):
             layer = layers[i]
+
+            # Get every linear layer in a block
             named_linears = get_named_linears(layer)
+
+            # Replace activation functions
             self._scale_activations(self, layer)
 
+            # Replace nn.Linear with WQLinear
             for name, module in named_linears.items():
                 q_linear = WQLinear.from_linear(
                     module, w_bit, q_config['q_group_size'], True)
@@ -210,12 +248,6 @@ class BaseAWQForCausalLM:
             
             torch.cuda.empty_cache()
             gc.collect()
-        
-        model.tie_weights()
-
-        model = load_checkpoint_and_dispatch(model, quant_path, device_map="balanced", no_split_module_classes=[self.layer_type])
-
-        return model
     
     @staticmethod
     def _scale_activations(self, layer):
