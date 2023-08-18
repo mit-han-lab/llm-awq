@@ -22,6 +22,12 @@ class BaseAWQForCausalLM:
         self.model_type:str = model_type
         self.is_quantized:bool = is_quantized
         self.search_result = None
+    
+    def to(self, device: str):
+        return self.model.to(device)
+    
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
 
     @torch.no_grad()
     def quantize(self, tokenizer=None, w_bit=4, q_config={}, n_samples=128, seqlen=512,
@@ -170,27 +176,37 @@ class BaseAWQForCausalLM:
         return awq_results
 
     def save_quantized(self, save_dir):
+        def _save_files(save_dir, model_name, model):
+            class EmptyModule(nn.Module):
+                def __init__(self): super(EmptyModule, self).__init__()
+                def forward(self, x): return x
+
+            # Save model fiels without search results
+            self.model.save_pretrained(save_dir, state_dict=EmptyModule().state_dict())
+
+            # Remove empty module
+            os.remove(f'{save_dir}/pytorch_model.bin')
+
+            # Save search results
+            torch.save(model, f'{save_dir}/{model_name}')
+
         save_dir = save_dir[:-1] if save_dir[-1] == '/' else save_dir
 
         # Save model
         if self.search_result is None:
-            self.model.save_pretrained(save_dir, state_dict=self.model.state_dict())
-        else:
-            self.model.save_pretrained(save_dir, state_dict=self.search_result)
-        
-        # TODO: Rename model name & save quant_config
-        if self.search_result is not None:
-            model_name = 'awq_model_search_result.pt'
-        else:
             model_name = 'awq_model_w4_g128.pt'
-
+            _save_files(save_dir, model_name, self.model.state_dict())
+        else:
+            model_name = 'awq_model_search_result.pt'
+            _save_files(save_dir, model_name, self.search_result)
+        
     @classmethod
     def from_pretrained(self, model_path, model_type, torch_dtype: torch.dtype = torch.float16, 
                         trust_remote_code=True):
         return self.from_quantized(
             model_path, 
             model_type, 
-            quant_file='', 
+            model_filename='', 
             device='balanced', 
             torch_dtype=torch_dtype, 
             trust_remote_code=trust_remote_code, 
@@ -198,11 +214,14 @@ class BaseAWQForCausalLM:
         )
 
     @classmethod
-    def from_quantized(self, model_path, model_type, quant_file, w_bit=4, q_config={}, 
+    def from_quantized(self, model_path, model_type, model_filename, w_bit=4, q_config={}, 
                        device='balanced', torch_dtype=torch.float16, trust_remote_code=True, is_quantized=True):
-        # Download model
-        model_path = snapshot_download(model_path)
-        quant_path = model_path + f'/{quant_file}' if is_quantized else model_path
+        # Download model if path is not a directory
+        if not os.path.isdir(model_path):
+            model_path = snapshot_download(model_path)
+        
+        # TODO: Better naming, model_filename becomes a directory
+        model_filename = model_path + f'/{model_filename}'
 
         # Load config
         config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
@@ -219,7 +238,7 @@ class BaseAWQForCausalLM:
         model.tie_weights()
         
         # Load model weights
-        model = load_checkpoint_and_dispatch(model, quant_path, device_map=device, no_split_module_classes=[self.layer_type])
+        model = load_checkpoint_and_dispatch(model, model_filename, device_map=device, no_split_module_classes=[self.layer_type])
 
         return self(model, model_type, is_quantized=is_quantized)
 

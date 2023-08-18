@@ -29,6 +29,9 @@ def run_search(model_path, dump_path, w_bit, q_config):
     # Save search results
     model.save_quantized(dump_path)
 
+    # Save tokenizer
+    tokenizer.save_pretrained(dump_path)
+
 def run_quant(model_path, search_path, dump_path, w_bit, q_config):
     """
     Step 2/2: Use the search results to quantize model weights
@@ -43,16 +46,16 @@ def run_quant(model_path, search_path, dump_path, w_bit, q_config):
     # Save quantized model
     model.save_quantized(dump_path)
 
-def run_perplexity(model_path, quant_path, w_bit, q_config, device):
+def run_perplexity(quant_path, quant_file, w_bit, q_config, device):
     """
     Post quantization: Evaluate perplexity on wikitext with EleutherAI Evaluation Harness
     """
     # Load model
-    model = AutoAWQForCausalLM.from_quantized(model_path, quant_path, w_bit, q_config, device)
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    model = AutoAWQForCausalLM.from_quantized(quant_path, quant_file, w_bit, q_config)
+    tokenizer = AutoTokenizer.from_pretrained(quant_path, trust_remote_code=True)
 
     # Load adapter
-    lm_eval_model = LMEvalAdaptor(model_path, model, tokenizer, device, batch_size=1)
+    lm_eval_model = LMEvalAdaptor(quant_path, model, tokenizer, device, batch_size=1)
 
     # Evaluate perplexity of quantized model
     results = evaluator.simple_evaluate(
@@ -68,15 +71,16 @@ def run_perplexity(model_path, quant_path, w_bit, q_config, device):
 if __name__ == '__main__':
     """
     python -m awq.entry --entry_type search --model_path mosaicml/mpt-7b-8k-chat --search_path mpt-7b-8k-chat-awq
-    python -m awq.entry --entry_type quant --model_path mosaicml/mpt-7b-8k-chat --search_path mpt-7b-8k-chat-awq/pytorch_model.bin --quant_path mpt-7b-8k-chat-awq
-    python -m awq.entry --entry_type perplexity --model_path mosaicml/mpt-7b-8k-chat --quant_path mpt-7b-8k-chat-awq
+    python -m awq.entry --entry_type quant --model_path mosaicml/mpt-7b-8k-chat --search_path mpt-7b-8k-chat-awq/awq_model_search_result.pt --quant_path mpt-7b-8k-chat-awq
+    python -m awq.entry --entry_type perplexity --quant_path mpt-7b-8k-chat-awq --quant_file awq_model_w4_g128.pt
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--entry_type', type=str, help='The type of task to run (search|quant|perplexity)')
     parser.add_argument('--model_path', type=str, help='Path to hf model')
     parser.add_argument('--search_path', type=str, help='Path to save/load AWQ search results')
-    parser.add_argument('--quant_path', type=str, help='Path to save/load AWQ quant model')
-    parser.add_argument('--device', type=str, default='balanced', help='Device to load model to')
+    parser.add_argument('--quant_path', type=str, help='Path to AWQ model directory')
+    parser.add_argument('--quant_file', type=str, help='Path to quantized AWQ model file')
+    parser.add_argument('--device', type=str, default='cuda:0', help='Device to load model to')
     parser.add_argument('--w_bit', type=int, default=4)
     parser.add_argument('--q_group_size', type=int, default=128)
     args = parser.parse_args()
@@ -88,6 +92,6 @@ if __name__ == '__main__':
     elif args.entry_type == 'quant':
         run_quant(args.model_path, args.search_path, args.quant_path, args.w_bit, q_config)
     elif args.entry_type == 'perplexity':
-        run_perplexity(args.model_path, args.quant_path, args.w_bit, q_config, args.device)
+        run_perplexity(args.quant_path, args.quant_file, args.w_bit, q_config, args.device)
     else:
         raise Exception('--entry_type must be one of (search|quant|perplexity)')

@@ -29,11 +29,11 @@ class AutoAWQForCausalLM:
         )
 
     @classmethod
-    def from_quantized(self, model_path, quant_file, w_bit=4, q_config={}, 
+    def from_quantized(self, quant_path, quant_filename, w_bit=4, q_config={}, 
                        device='balanced', trust_remote_code=True) -> BaseAWQForCausalLM:
-        model_type = check_and_get_model_type(model_path, trust_remote_code)
+        model_type = check_and_get_model_type(quant_path, trust_remote_code)
         q_config = q_config if q_config else self.default_q_config
 
         return AWQ_CAUSAL_LM_MODEL_MAP[model_type].from_quantized(
-            model_path, model_type, quant_file, w_bit, q_config, device, trust_remote_code=trust_remote_code
+            quant_path, model_type, quant_filename, w_bit, q_config, device, trust_remote_code=trust_remote_code
         )
