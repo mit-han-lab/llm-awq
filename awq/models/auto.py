@@ -1,9 +1,10 @@
 from transformers import AutoConfig
-from awq.models import MptAWQForCausalLM
+from awq.models import *
 from awq.models.base import BaseAWQForCausalLM
 
 AWQ_CAUSAL_LM_MODEL_MAP = {
     "mpt": MptAWQForCausalLM,
+    'llama': LlamaAWQForCausalLM
 }
 
 def check_and_get_model_type(model_dir, trust_remote_code=True):

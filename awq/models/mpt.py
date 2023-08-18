@@ -8,6 +8,20 @@ class MptAWQForCausalLM(BaseAWQForCausalLM):
         return model.transformer.blocks
     
     @staticmethod
+    def get_act_for_scaling(module):
+        return dict(
+            is_scalable=True,
+            scale_name="ffn.act",
+            scale_layer=module.ffn.act,
+            scale_shape=module.ffn.up_proj.out_features
+        )
+    
+    @staticmethod
+    def move_embed(model, device):
+        model.transformer.wte = model.transformer.wte.to(device)
+        model.transformer.emb_drop = model.transformer.emb_drop.to(device)
+    
+    @staticmethod
     def get_layers_for_scaling(module, input_feat, module_kwargs):
         layers = []
 
@@ -43,20 +57,3 @@ class MptAWQForCausalLM(BaseAWQForCausalLM):
         ))
 
         return layers
-    
-    @staticmethod
-    def get_act_from_layer(layer):
-        return layer.ffn.act
-    
-    @staticmethod
-    def get_act_for_scaling(module):
-        return dict(
-            scale_name="ffn.act",
-            scale_layer=module.ffn.act,
-            scale_shape=module.ffn.up_proj.out_features
-        )
-    
-    @staticmethod
-    def move_embed(model, device):
-        model.transformer.wte = model.transformer.wte.to(device)
-        model.transformer.emb_drop = model.transformer.emb_drop.to(device)

@@ -270,15 +270,15 @@ class BaseAWQForCausalLM:
     
     @staticmethod
     def _scale_activations(self, layer):
-        act_function = self.get_act_from_layer(layer)
+        scale_dict = self.get_act_for_scaling(layer)
 
-        if act_function is not None and not isinstance(act_function, ScaledActivation):
-            param = next(layer.parameters())
+        if scale_dict['is_scalable']:
+            if not isinstance(scale_dict['scale_layer'], ScaledActivation):
+                param = next(layer.parameters())
 
-            # get activation scale
-            scale_dict = self.get_act_for_scaling(layer)
-            scale_like = torch.ones(scale_dict['scale_shape'], dtype=param.dtype, device=param.device)
+                # get activation scale
+                scale_like = torch.ones(scale_dict['scale_shape'], dtype=param.dtype, device=param.device)
 
-            # scale activation
-            scaled_act = ScaledActivation(scale_dict['scale_layer'], scale_like)
-            set_op_by_name(layer, scale_dict['scale_name'], scaled_act)
+                # scale activation
+                scaled_act = ScaledActivation(scale_dict['scale_layer'], scale_like)
+                set_op_by_name(layer, scale_dict['scale_name'], scaled_act)
