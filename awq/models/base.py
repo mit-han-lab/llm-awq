@@ -225,7 +225,7 @@ class BaseAWQForCausalLM(nn.Module):
         save_dir = save_dir[:-1] if save_dir[-1] == '/' else save_dir
 
         # Save model
-        if self.search_result is None and not self.is_quantized:
+        if self.search_result is None or self.is_quantized:
             model_name = f'awq_model_w{self.quant_config["w_bit"]}_g{self.quant_config["q_group_size"]}.pt'
             _save_files(save_dir, model_name, self.model.state_dict())
         else:
