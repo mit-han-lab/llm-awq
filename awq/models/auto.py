@@ -5,7 +5,9 @@ from awq.models.base import BaseAWQForCausalLM
 AWQ_CAUSAL_LM_MODEL_MAP = {
     "mpt": MptAWQForCausalLM,
     "llama": LlamaAWQForCausalLM,
-    "opt": OptAWQForCausalLM
+    "opt": OptAWQForCausalLM,
+    "RefinedWeb": FalconAWQForCausalLM,
+    "RefinedWebModel": FalconAWQForCausalLM
 }
 
 def check_and_get_model_type(model_dir, trust_remote_code=True):
