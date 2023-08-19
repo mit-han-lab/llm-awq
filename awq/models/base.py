@@ -18,8 +18,9 @@ from transformers import AutoModelForCausalLM, AutoConfig, PreTrainedModel
 from accelerate import init_empty_weights, load_checkpoint_and_dispatch, infer_auto_device_map
 from awq.utils.module import append_str_prefix, get_op_name, get_named_linears, set_op_by_name
 
-class BaseAWQForCausalLM:
+class BaseAWQForCausalLM(nn.Module):
     def __init__(self, model, model_type, is_quantized, quant_config):
+        super().__init__()
         self.model:PreTrainedModel = model
         self.model_type:str = model_type
         self.is_quantized:bool = is_quantized
