@@ -31,6 +31,10 @@ class BaseAWQForCausalLM(nn.Module):
     
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
+    
+    def generate(self, *args, **kwargs):
+        with torch.inference_mode():
+            return self.model.generate(*args, **kwargs)
 
     @torch.no_grad()
     def quantize(self, tokenizer=None, quant_config={}, n_samples=128, seqlen=512,
