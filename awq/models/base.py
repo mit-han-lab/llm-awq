@@ -3,7 +3,6 @@ import gc
 import json
 import torch
 import functools
-import accelerate
 import torch.nn as nn
 from tqdm import tqdm
 from collections import defaultdict
@@ -44,11 +43,11 @@ class BaseAWQForCausalLM(nn.Module):
                        auto_scale=auto_scale, mse_range=mse_range, calib_data=calib_data)
         
         if run_quant:
-            self._awq_quant(quant_config)
+            self._awq_quant()
     
     
-    def _awq_quant(self, quant_config):
-        assert quant_config["zero_point"], "We only support zero_point quantization now."
+    def _awq_quant(self):
+        assert self.quant_config["zero_point"], "We only support zero_point quantization now."
         layers = self.get_model_layers(self.model)
 
         # Run AWQ quantization
@@ -59,11 +58,25 @@ class BaseAWQForCausalLM(nn.Module):
 
             for name, module in named_linears.items():
                 module.cuda()
-                module.weight.data, scales, zeros = pseudo_quantize_tensor(module.weight.data, w_bit=quant_config['w_bit'], get_scale_zp=True, **quant_config)
+
+                module.weight.data, scales, zeros = pseudo_quantize_tensor(
+                    module.weight.data, 
+                    get_scale_zp=True, 
+                    **self.quant_config
+                )
+
                 scales = scales.t().contiguous()
                 zeros = zeros.t().contiguous()
+
                 q_linear = WQLinear.from_linear(
-                    module, quant_config['w_bit'], quant_config['q_group_size'], False, scales, zeros)
+                    module, 
+                    self.quant_config['w_bit'], 
+                    self.quant_config['q_group_size'], 
+                    False, 
+                    scales, 
+                    zeros
+                )
+
                 module.cpu()
                 q_linear.to(next(layer.parameters()).device)
                 set_op_by_name(layer, name, q_linear)
@@ -228,7 +241,7 @@ class BaseAWQForCausalLM(nn.Module):
         )
 
     @classmethod
-    def from_quantized(self, model_path, model_type, model_filename, w_bit=4, quant_config={}, 
+    def from_quantized(self, model_path, model_type, model_filename,
                        device='balanced', torch_dtype=torch.float16, trust_remote_code=True, 
                        safetensors=False, is_quantized=True):
         # Download model if path is not a directory
@@ -245,6 +258,14 @@ class BaseAWQForCausalLM(nn.Module):
         model_filename = model_path + f'/{model_filename}'
 
         # Load config
+        quant_config_path = f'{model_path}/quant_config.json'
+        if os.path.exists(quant_config_path):
+            with open(quant_config_path, 'r') as file:
+                quant_config = json.loads(file.read())
+        else:
+            # Default config that works for most models
+            quant_config = {"zero_point": True, "q_group_size": 128, "w_bit": 4}
+        
         config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
 
         # Load empty weights
@@ -254,7 +275,7 @@ class BaseAWQForCausalLM(nn.Module):
         # Only need to replace layers if a model is AWQ quantized
         if is_quantized:
             # Prepare WQLinear layers, replace nn.Linear
-            self._load_quantized_modules(self, model, w_bit, quant_config)
+            self._load_quantized_modules(self, model, quant_config)
         
         model.tie_weights()
 
@@ -281,7 +302,7 @@ class BaseAWQForCausalLM(nn.Module):
 
         return self(model, model_type, is_quantized=is_quantized, quant_config=quant_config)
 
-    def _load_quantized_modules(self, model, w_bit, quant_config):
+    def _load_quantized_modules(self, model, quant_config):
         # Real quantization of weights
         assert quant_config["zero_point"], "We only support zero_point quantization now."
         
@@ -300,7 +321,7 @@ class BaseAWQForCausalLM(nn.Module):
             # Replace nn.Linear with WQLinear
             for name, module in named_linears.items():
                 q_linear = WQLinear.from_linear(
-                    module, w_bit, quant_config['q_group_size'], True)
+                    module, quant_config['w_bit'], quant_config['q_group_size'], True)
                 q_linear.to(next(layer.parameters()).device)
                 set_op_by_name(layer, name, q_linear)
             

@@ -46,12 +46,12 @@ def run_quant(model_path, search_path, dump_path, quant_config):
     # Save quantized model
     model.save_quantized(dump_path)
 
-def run_perplexity(quant_path, quant_file, quant_config, device):
+def run_perplexity(quant_path, quant_file, device):
     """
     Post quantization: Evaluate perplexity on wikitext with EleutherAI Evaluation Harness
     """
     # Load model
-    model = AutoAWQForCausalLM.from_quantized(quant_path, quant_file, quant_config)
+    model = AutoAWQForCausalLM.from_quantized(quant_path, quant_file)
     tokenizer = AutoTokenizer.from_pretrained(quant_path, trust_remote_code=True)
 
     # Load adapter
@@ -92,6 +92,6 @@ if __name__ == '__main__':
     elif args.entry_type == 'quant':
         run_quant(args.model_path, args.search_path, args.quant_path, quant_config)
     elif args.entry_type == 'perplexity':
-        run_perplexity(args.quant_path, args.quant_file, args.w_bit, quant_config, args.device)
+        run_perplexity(args.quant_path, args.quant_file, args.device)
     else:
         raise Exception('--entry_type must be one of (search|quant|perplexity)')
