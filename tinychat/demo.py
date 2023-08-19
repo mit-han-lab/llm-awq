@@ -1,13 +1,12 @@
-import argparse
-import time
-import numpy as np
 import torch
-import torch.nn as nn
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, modeling_utils
+import argparse
+import numpy as np
+from awq.models import *
+from awq.models.auto import AutoAWQForCausalLM
 from attributedict.collections import AttributeDict
-from tinychat.stream_generators import StreamGenerator, FalconStreamGenerator
-from tinychat.utils.load_quant import load_awq_model, load_awq_llama_fast
 from tinychat.utils.prompt_templates import get_prompter, get_stop_token_ids
+from tinychat.stream_generators import StreamGenerator, FalconStreamGenerator
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, modeling_utils
 
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -75,15 +74,12 @@ def device_warmup(device:str):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_type', type=str, default='LLaMa', help='type of the model')
     parser.add_argument('--model_path', type=str, default='/data/llm/checkpoints/vicuna-hf/vicuna-7b', help='path to the model')
+    parser.add_argument('--quant_file', type=str, default='awq_model_w4_g128.pt', help='path to the model file')
     parser.add_argument('--precision' , type=str, default='W4A16', help='compute precision')
     parser.add_argument('--device'    , type=str, default='cuda')
-    parser.add_argument('--q_group_size', type=int, default=128)
-    parser.add_argument('--load_quant', type=str, default='/data/llm/checkpoints/vicuna-hf/vicuna-7b-awq-w4g128.pt', help='path to the pre-quanted 4-bit weights')
 
     args = parser.parse_args()
-    assert args.model_type.lower() in ["llama", "falcon", "mpt"], "We only support llama & falcon & mpt now"
     assert args.precision in ["W4A16", "W16A16"], "We only support W4A16/W16A16 now"
 
     gen_params.n_predict = 512
@@ -107,30 +103,28 @@ if __name__ == '__main__':
     model = AutoModelForCausalLM.from_config(config, trust_remote_code=True)
 
     if args.precision == "W4A16":
-        if args.model_type.lower() == "llama":
-            model = load_awq_llama_fast(model, args.load_quant, 4, args.q_group_size, args.device)
-        else:
-            model = load_awq_model(model, args.load_quant, 4, args.q_group_size, args.device)
+        model = AutoAWQForCausalLM.from_quantized(args.model_path, args.quant_file)
+        assert model.model_type.lower() in ["llama", "refinedweb", "refinedwebmodel", "mpt"], "We only support llama & falcon & mpt now"
     else:
         model = AutoModelForCausalLM.from_pretrained(args.model_path, config=config, torch_dtype=torch.float16, trust_remote_code=True).to(args.device)
 
     # device warm up
     device_warmup(args.device)
 
-    if args.model_type.lower() == 'falcon':
+    if isinstance(model, FalconAWQForCausalLM):
         stream_generator = FalconStreamGenerator
     else:
         stream_generator = StreamGenerator
 
     # Optimize AWQ quantized model
-    if args.precision == "W4A16" and args.model_type.lower() == 'llama':
+    if args.precision == "W4A16" and isinstance(model, LlamaAWQForCausalLM):
         from tinychat.modules import make_quant_norm, make_quant_attn, make_fused_mlp
-        make_quant_attn(model, args.device)
-        make_quant_norm(model)
-        make_fused_mlp(model)
+        make_quant_attn(model.model, args.device)
+        make_quant_norm(model.model)
+        make_fused_mlp(model.model)
 
-    model_prompter = get_prompter(args.model_type, args.model_path)
-    stop_token_ids = get_stop_token_ids(args.model_type, args.model_path) 
+    model_prompter = get_prompter(model, args.model_path)
+    stop_token_ids = get_stop_token_ids(model, args.model_path) 
     count = 0
     while True:
         # Get input from the user

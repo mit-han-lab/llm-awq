@@ -1,4 +1,5 @@
 from typing import List
+from awq.models import *
 
 class BasePrompter:
     def __init__(self, system_inst, role1, role2, sen_spliter = "\n", qa_spliter = "\n", decorator: List[str] = None):
@@ -125,32 +126,31 @@ class MPTChatPrompter(BasePrompter):
 
 
 
-def get_prompter(model_type, model_path = ""):
-    if model_type.lower() == "llama":
+def get_prompter(model, model_path = ""):
+    if isinstance(model, LlamaAWQForCausalLM):
         if "vicuna" in model_path:
             return VicunaPrompter()
         else:
             return Llama2Prompter()
-    elif model_type.lower() == "falcon":
-        # return FalconPrompter()
+    elif isinstance(model, FalconAWQForCausalLM):
         return FalconSimplePrompter()
-    elif model_type.lower() == "mpt":
+    elif isinstance(model, MptAWQForCausalLM):
         if "mpt" and "chat" in model_path:
             return MPTChatPrompter()
         else:
             return MPTPrompter()
     else:
-        raise ValueError(f"model type {model_type} is not supported")
+        raise ValueError(f"model type {model.model_type} is not supported")
 
-def get_stop_token_ids(model_type, model_path = ""):
-    if model_type.lower() == "llama":
+def get_stop_token_ids(model, model_path = ""):
+    if isinstance(model, LlamaAWQForCausalLM):
         return []
-    elif model_type.lower() == "falcon":
+    elif isinstance(model, FalconAWQForCausalLM):
         return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-    elif model_type.lower() == "mpt":
+    elif isinstance(model, MptAWQForCausalLM):
         if "mpt" and "chat" in model_path:
             return [50278, 0]
         else:
             return []
     else:
-        raise ValueError(f"model type {model_type} is not supported")
+        raise ValueError(f"model type {model.model_type} is not supported")
