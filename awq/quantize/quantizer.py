@@ -1,8 +1,9 @@
 import torch
     
 # core quantization method (simulated quantization)
-def pseudo_quantize_tensor(w, n_bit=8,
-                           zero_point=True, q_group_size=-1,
+def pseudo_quantize_tensor(w, w_bit=4,
+                           zero_point=True, 
+                           q_group_size=-1,
                            inplace=False,
                            get_scale_zp=False
                            ):
@@ -14,7 +15,7 @@ def pseudo_quantize_tensor(w, n_bit=8,
     if zero_point:
         max_val = w.amax(dim=1, keepdim=True)
         min_val = w.amin(dim=1, keepdim=True)
-        max_int = 2 ** n_bit - 1
+        max_int = 2 ** w_bit - 1
         min_int = 0
         scales = (max_val - min_val).clamp(min=1e-5) / max_int
         zeros = (-torch.round(min_val / scales)).clamp_(min_int, max_int)
@@ -22,8 +23,8 @@ def pseudo_quantize_tensor(w, n_bit=8,
         assert min_val is None
         max_val = w.abs().amax(dim=1, keepdim=True)
         max_val = max_val.clamp(min=1e-5)
-        max_int = 2 ** (n_bit - 1) - 1
-        min_int = - 2 ** (n_bit - 1)
+        max_int = 2 ** (w_bit - 1) - 1
+        min_int = - 2 ** (w_bit - 1)
         scales = max_val / max_int
         zeros = 0
 

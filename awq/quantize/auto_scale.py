@@ -90,15 +90,14 @@ def scale_gelu_fc(gelu, fc, scales):
 
 @torch.no_grad()
 def auto_scale_block(awq_model,
-                     module, module_kwargs,
-                     w_bit, q_config,
+                     module, 
+                     module_kwargs,
+                     quant_config,
                      input_feat):
     from .quantizer import pseudo_quantize_tensor
     # firstly, get the weight quantize function
-    if w_bit is not None:
-        def w_quantize_func(p): return pseudo_quantize_tensor(
-            p, n_bit=w_bit, **q_config,
-        ).detach()
+    if quant_config['w_bit'] is not None:
+        def w_quantize_func(p): return pseudo_quantize_tensor(p, **quant_config).detach()
     else:
         def w_quantize_func(p): return p
 
@@ -111,7 +110,7 @@ def auto_scale_block(awq_model,
         # x: n, ci
         weight = torch.cat([_m.weight for _m in linears2scale], dim=0)
         w_max = get_weight_scale(
-            weight, q_group_size=q_config.get("q_group_size", -1))
+            weight, q_group_size=quant_config.get("q_group_size", -1))
         # Clear GPU memory
         del weight
         gc.collect()

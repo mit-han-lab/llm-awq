@@ -8,7 +8,9 @@ __all__ = ["auto_clip_block"]
 
 # weight quantization
 @torch.no_grad()
-def auto_clip_layer(w, input_feat, n_bit, q_config,
+def auto_clip_layer(w, 
+                    input_feat, 
+                    quant_config,
                     n_grid=20,
                     max_shrink=0.5,
                     n_sample_token=512):
@@ -16,7 +18,7 @@ def auto_clip_layer(w, input_feat, n_bit, q_config,
     org_w_shape = w.shape
     # w           [co, ci]      -> [co, 1, n_group, group size]
     # input_feat  [n_token, ci] -> [1, n_token, n_group, group size]
-    group_size = q_config["q_group_size"] if q_config["q_group_size"] > 0 else w.shape[1]
+    group_size = quant_config["q_group_size"] if quant_config["q_group_size"] > 0 else w.shape[1]
     input_feat = input_feat.view(-1, input_feat.shape[-1])
     input_feat = input_feat.reshape(1, input_feat.shape[0], -1, group_size)
     input_feat = input_feat[:, 0::input_feat.shape[1] // n_sample_token]
@@ -41,7 +43,7 @@ def auto_clip_layer(w, input_feat, n_bit, q_config,
             max_val = org_max_val * (1 - i_s / n_grid)
             min_val = - max_val
             cur_w = torch.clamp(w, min_val, max_val)
-            q_w = pseudo_quantize_tensor(cur_w, n_bit=n_bit, **q_config)
+            q_w = pseudo_quantize_tensor(cur_w, **quant_config)
             cur_out = (input_feat * q_w).sum(dim=-1)
 
             # co, 1, n_group, 1
@@ -64,7 +66,7 @@ def auto_clip_layer(w, input_feat, n_bit, q_config,
 
 @torch.no_grad()
 def auto_clip_block(module,
-                    w_bit, q_config,
+                    quant_config,
                     input_feat):
 
     named_linears = {name: m for name,
@@ -77,7 +79,7 @@ def auto_clip_block(module,
             continue
         named_linears[name].cuda()
         max_val = auto_clip_layer(
-            named_linears[name].weight, input_feat[name], n_bit=w_bit, q_config=q_config)
+            named_linears[name].weight, input_feat[name], quant_config=quant_config)
         clip_list.append((name, max_val))
         named_linears[name].cpu()
     return clip_list

@@ -15,7 +15,7 @@ def load_search_result_into_memory(model, search_path):
     apply_scale(model, awq_results["scale"])
     apply_clip(model, awq_results["clip"])
 
-def run_search(model_path, dump_path, w_bit, q_config):
+def run_search(model_path, dump_path, quant_config):
     """
     Step 1/2: Search the pile for an optimal scaling factor.
     """
@@ -24,7 +24,7 @@ def run_search(model_path, dump_path, w_bit, q_config):
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
     # Quantize
-    model.quantize(tokenizer, w_bit=w_bit, q_config=q_config, run_search=True, run_quant=False)
+    model.quantize(tokenizer, quant_config=quant_config, run_search=True, run_quant=False)
 
     # Save search results
     model.save_quantized(dump_path)
@@ -32,7 +32,7 @@ def run_search(model_path, dump_path, w_bit, q_config):
     # Save tokenizer
     tokenizer.save_pretrained(dump_path)
 
-def run_quant(model_path, search_path, dump_path, w_bit, q_config):
+def run_quant(model_path, search_path, dump_path, quant_config):
     """
     Step 2/2: Use the search results to quantize model weights
     """
@@ -41,17 +41,17 @@ def run_quant(model_path, search_path, dump_path, w_bit, q_config):
     load_search_result_into_memory(model.model, search_path)
 
     # Run actual weight quantization
-    model.quantize(w_bit=w_bit, q_config=q_config, run_search=False, run_quant=True)
+    model.quantize(quant_config=quant_config, run_search=False, run_quant=True)
 
     # Save quantized model
     model.save_quantized(dump_path)
 
-def run_perplexity(quant_path, quant_file, w_bit, q_config, device):
+def run_perplexity(quant_path, quant_file, quant_config, device):
     """
     Post quantization: Evaluate perplexity on wikitext with EleutherAI Evaluation Harness
     """
     # Load model
-    model = AutoAWQForCausalLM.from_quantized(quant_path, quant_file, w_bit, q_config)
+    model = AutoAWQForCausalLM.from_quantized(quant_path, quant_file, quant_config)
     tokenizer = AutoTokenizer.from_pretrained(quant_path, trust_remote_code=True)
 
     # Load adapter
@@ -85,13 +85,13 @@ if __name__ == '__main__':
     parser.add_argument('--q_group_size', type=int, default=128)
     args = parser.parse_args()
 
-    q_config = { "zero_point": True, "q_group_size": args.q_group_size }
+    quant_config = { "zero_point": True, "q_group_size": args.q_group_size, "w_bit": args.w_bit }
     
     if args.entry_type == 'search':
-        run_search(args.model_path, args.search_path, args.w_bit, q_config)
+        run_search(args.model_path, args.search_path, quant_config)
     elif args.entry_type == 'quant':
-        run_quant(args.model_path, args.search_path, args.quant_path, args.w_bit, q_config)
+        run_quant(args.model_path, args.search_path, args.quant_path, quant_config)
     elif args.entry_type == 'perplexity':
-        run_perplexity(args.quant_path, args.quant_file, args.w_bit, q_config, args.device)
+        run_perplexity(args.quant_path, args.quant_file, args.w_bit, quant_config, args.device)
     else:
         raise Exception('--entry_type must be one of (search|quant|perplexity)')

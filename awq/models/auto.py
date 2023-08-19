@@ -16,7 +16,7 @@ def check_and_get_model_type(model_dir, trust_remote_code=True):
     return model_type
 
 class AutoAWQForCausalLM:
-    default_q_config = {"zero_point": True, "q_group_size": 128}
+    default_quant_config = {"zero_point": True, "q_group_size": 128, "w_bit": 4}
 
     def __init__(self):
         raise EnvironmentError('You must instantiate AutoAWQForCausalLM with\n'
@@ -31,11 +31,11 @@ class AutoAWQForCausalLM:
         )
 
     @classmethod
-    def from_quantized(self, quant_path, quant_filename, w_bit=4, q_config={}, 
+    def from_quantized(self, quant_path, quant_filename, quant_config={}, 
                        device='balanced', trust_remote_code=True) -> BaseAWQForCausalLM:
         model_type = check_and_get_model_type(quant_path, trust_remote_code)
-        q_config = q_config if q_config else self.default_q_config
+        quant_config = quant_config if quant_config else self.default_quant_config
 
         return AWQ_CAUSAL_LM_MODEL_MAP[model_type].from_quantized(
-            quant_path, model_type, quant_filename, w_bit, q_config, device, trust_remote_code=trust_remote_code
+            quant_path, model_type, quant_filename, quant_config, device, trust_remote_code=trust_remote_code
         )
