@@ -1,5 +1,7 @@
 from typing import List
 from awq.models import *
+from transformers.models.llama.modeling_llama import LlamaForCausalLM
+from transformers.models.falcon.modeling_falcon import FalconForCausalLM
 
 class BasePrompter:
     def __init__(self, system_inst, role1, role2, sen_spliter = "\n", qa_spliter = "\n", decorator: List[str] = None):
@@ -127,14 +129,14 @@ class MPTChatPrompter(BasePrompter):
 
 
 def get_prompter(model, model_path = ""):
-    if isinstance(model, LlamaAWQForCausalLM):
+    if isinstance(model, LlamaAWQForCausalLM) or isinstance(model, LlamaForCausalLM):
         if "vicuna" in model_path:
             return VicunaPrompter()
         else:
             return Llama2Prompter()
-    elif isinstance(model, FalconAWQForCausalLM):
+    elif isinstance(model, FalconAWQForCausalLM) or isinstance(model, FalconForCausalLM):
         return FalconSimplePrompter()
-    elif isinstance(model, MptAWQForCausalLM):
+    elif isinstance(model, MptAWQForCausalLM) or "mpt" in str(model.__class__).lower():
         if "mpt" and "chat" in model_path:
             return MPTChatPrompter()
         else:
@@ -143,14 +145,15 @@ def get_prompter(model, model_path = ""):
         raise ValueError(f"model type {model.model_type} is not supported")
 
 def get_stop_token_ids(model, model_path = ""):
-    if isinstance(model, LlamaAWQForCausalLM):
+    if isinstance(model, LlamaAWQForCausalLM) or isinstance(model, LlamaForCausalLM):
         return []
-    elif isinstance(model, FalconAWQForCausalLM):
+    elif isinstance(model, FalconAWQForCausalLM) or isinstance(model, FalconForCausalLM):
         return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-    elif isinstance(model, MptAWQForCausalLM):
+    elif isinstance(model, MptAWQForCausalLM) or "mpt" in str(model.__class__).lower():
         if "mpt" and "chat" in model_path:
             return [50278, 0]
         else:
             return []
     else:
-        raise ValueError(f"model type {model.model_type} is not supported")
+        model_type = str(model.__class__).lower()
+        raise ValueError(f"model type {model_type} is not supported")
