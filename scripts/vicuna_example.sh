@@ -1,4 +1,4 @@
-MODEL=facebook/opt-6.7b
+MODEL=lmsys/vicuna-7b-v1.5
 
 # run AWQ search (optional; we provided the pre-computed results)
 python -m awq.entry --entry_type search \

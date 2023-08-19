@@ -7,23 +7,16 @@ We introduce TinyChat, a cutting-edge chatbot interface designed for lightweight
 The current release supports:
 
 - LLaMA-2-7B/13B-chat;
-
 - Vicuna;
-
 - MPT-chat;
-
 - Falcon-instruct.
-
 
 
 ## Contents
 
 - [Examples](#examples)
-
 - [Benchmarks](#benchmarks)
-
 - [Usage](#usage)
-
 - [Reference](#reference)
 
 
@@ -91,73 +84,27 @@ The latency reported in all tables are per-token latency for the generation stag
 2. Download the pretrained instruction-tuned LLMs:
    
    - For LLaMA-2-chat, please refer to [this link](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf);
-   
    - For Vicuna, please refer to [this link](https://huggingface.co/lmsys/);
-   
    - For MPT-chat, please refer to [this link](https://huggingface.co/mosaicml/mpt-7b-chat);
-   
    - For Falcon-instruct, please refer to [this link](https://huggingface.co/tiiuae/falcon-7b-instruct).
 
-
-3. Quantize instruction-tuned LLMs with AWQ:
-
-- We provide pre-computed AWQ search results for multiple model families, including LLaMA, OPT, Vicuna, and LLaVA. To get the pre-computed AWQ search results, run:
-
-```bash
-# git lfs install  # install git lfs if not already
-git clone https://huggingface.co/datasets/mit-han-lab/awq-model-zoo awq_cache
-```
-
-- You may run a one-line starter below:
-
-```bash
-./scripts/llama2_demo.sh
-```
-
-Alternatively, you may go through the process step by step. We will demonstrate the quantization process with LLaMA-2. For all other models except Falcon, one only needs to change the `model_path` and saving locations. For Falcon-7B, we also need to change `q_group_size` from 128 to 64.
-
-- Perform AWQ search and save search results (we already did it for you):
-
-```bash
-mkdir awq_cache
-python -m awq.entry --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
-    --w_bit 4 --q_group_size 128 \
-    --run_awq --dump_awq awq_cache/llama-2-7b-chat-w4-g128.pt
-```
-
-- Generate real quantized weights (INT4):
-
-```bash
-mkdir quant_cache
-python -m awq.entry --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
-    --w_bit 4 --q_group_size 128 \
-    --load_awq awq_cache/llama-2-7b-chat-w4-g128.pt \
-    --q_backend real --dump_quant quant_cache/llama-2-7b-chat-w4-g128-awq.pt
-```
+3. Quantize instruction-tuned LLMs with AWQ (see [usage in README](../README.md#usage)).
 
 4. Run the TinyChat demo:
 
+Here, we use Vicuna as an example and assume that you have already quantized the model.
+
 ```bash
 cd tinychat
-python demo.py --model_type llama \
-    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
-    --q_group_size 128 --load_quant quant_cache/llama-2-7b-chat-w4-g128-awq.pt \ 
-    --precision W4A16
+python demo.py --model_path vicuna-7b-v1.5-awq
 ```
 
-Note: if you use Falcon-7B-instruct, please remember to also change `q_group_size` to 64. You may also run the following command to execute the chatbot in FP16 to compare the speed and quality of language generation:
+You may also run the following command to execute the chatbot in FP16 to compare the speed and quality of language generation:
 
 ```bash
-python demo.py --model_type llama \
-    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
-    --precision W16A16
+python demo.py --model_path lmsys/vicuna-7b-v1.5 --precision W16A16
 ```
-
-
 
 ## Reference
 
 TinyChat is inspired by the following open-source projects: [FasterTransformer](https://github.com/NVIDIA/FasterTransformer), [vLLM](https://github.com/vllm-project/vllm), [FastChat](https://github.com/lm-sys/FastChat).
-
-
-

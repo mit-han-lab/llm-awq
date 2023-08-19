@@ -71,13 +71,16 @@ git clone https://huggingface.co/datasets/mit-han-lab/awq-model-zoo awq_cache
 
 The detailed support list:
 
-| Models | Sizes                       | INT4-g128 | INT3-g128 |
-| ------ | --------------------------- | --------- | --------- |
-| LLaMA-2  | 7B/7B-chat/13B/13B-chat   | ✅         | ✅        |
-| LLaMA  | 7B/13B/30B/65B              | ✅         | ✅        |
-| OPT    | 125m/1.3B/2.7B/6.7B/13B/30B | ✅         | ✅        |
-| Vicuna-v1.1 | 7B/13B                 | ✅         |           |
-| LLaVA-v0 | 13B                       | ✅         |           |
+| Models   | Sizes                       | INT4-g128  | INT3-g128 |
+| ---------| ----------------------------| -----------| --------- |
+| LLaMA-2  | 7B/13B/70B                  | ✅         | ✅        |
+| LLaMA    | 7B/13B/30B/65B              | ✅         | ✅        |
+| Vicuna   | 7B/13B                      | ✅         |           |
+| MPT      | 7B/30B                      | ✅         |           |
+| Falcon   | 7B/40B                      | ✅         |           |
+| OPT      | 125m/1.3B/2.7B/6.7B/13B/30B | ✅         | ✅        |
+| Bloom    | 560m/3B/7B/                 | ✅         | ✅        |
+| LLaVA-v0 | 13B                         | ✅         |           |
 
 ## Examples
 
@@ -91,39 +94,30 @@ Note that we perform AWQ using only textual calibration data, depsite we are run
 
 ## Usage
 
-We provide several sample script to run AWQ (please refer to `./scripts`). We use OPT-6.7B as an example.
+We provide several sample script to run AWQ (please refer to `./scripts`). We use Vicuna 7B v1.5 as an example.
 
-1. Perform AWQ search and save search results (we already did it for you):
+1. Perform AWQ search and save search results
 ```bash
-python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
-    --w_bit 4 --q_group_size 128 \
-    --run_awq --dump_awq awq_cache/opt-6.7b-w4-g128.pt
+python -m awq.entry --entry_type search \
+    --model_path lmsys/vicuna-7b-v1.5 \
+    --search_path vicuna-7b-v1.5-awq
 ```
 
-2. Evaluate the AWQ quantized model on WikiText-2 (simulated pseudo quantization)
+Note: if you use Falcon 7B, please pass `--q_group_size 64` in order for it to work.
+
+2. Generate quantized weights and save them (INT4)
 ```bash
-python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
-    --tasks wikitext \
-    --w_bit 4 --q_group_size 128 \
-    --load_awq awq_cache/opt-6.7b-w4-g128.pt \
-    --q_backend fake
+python -m awq.entry --entry_type quant \
+    --model_path lmsys/vicuna-7b-v1.5 \
+    --search_path vicuna-7b-v1.5-awq/awq_model_search_result.pt \
+    --quant_path vicuna-7b-v1.5-awq
 ```
 
-3. Generate real quantized weights (INT4)
+3. Load and evaluate the perplexity of the real quantized model weights (faster and uses less memory)
 ```bash
-mkdir quant_cache
-python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
-    --w_bit 4 --q_group_size 128 \
-    --load_awq awq_cache/opt-6.7b-w4-g128.pt \
-    --q_backend real --dump_quant quant_cache/opt-6.7b-w4-g128-awq.pt
-```
-
-4. Load and evaluate the real quantized model (now you can see smaller gpu memory usage)
-```bash
-python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
-    --tasks wikitext \
-    --w_bit 4 --q_group_size 128 \
-    --load_quant quant_cache/opt-6.7b-w4-g128-awq.pt
+python -m awq.entry --entry_type perplexity \
+    --quant_path vicuna-7b-v1.5-awq \
+    --quant_file awq_model_w4_g128.pt
 ```
 
 ## Reference
