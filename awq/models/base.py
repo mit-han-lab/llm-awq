@@ -225,7 +225,7 @@ class BaseAWQForCausalLM(nn.Module):
 
         # Save model
         if self.search_result is None:
-            model_name = 'awq_model_w4_g128.pt'
+            model_name = f'awq_model_w{self.quant_config.w_bit}_g{self.quant_config.q_group_size}.pt'
             _save_files(save_dir, model_name, self.model.state_dict())
         else:
             model_name = 'awq_model_search_result.pt'
