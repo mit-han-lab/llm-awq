@@ -81,7 +81,7 @@ if __name__ == '__main__':
     python -m awq.entry --entry_type quant --model_path lmsys/vicuna-7b-v1.5 --search_path vicuna-7b-v1.5-awq/awq_model_search_result.pt --quant_path vicuna-7b-v1.5-awq
 
     - Run perplexity of quantized model:
-    python -m awq.entry --entry_type eval --model_path casperhansen/vicuna-7b-v1.5-awq --quant_file awq_model_w4_g128.pt
+    python -m awq.entry --entry_type eval --model_path vicuna-7b-v1.5-awq --quant_file awq_model_w4_g128.pt
 
     - Run perplexity unquantized FP16 model:
     python -m awq.entry --entry_type eval --model_path lmsys/vicuna-7b-v1.5 --task_use_pretrained
