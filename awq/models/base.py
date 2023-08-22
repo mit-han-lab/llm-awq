@@ -239,6 +239,7 @@ class BaseAWQForCausalLM(nn.Module):
             model_path, 
             model_type, 
             model_filename='', 
+            max_new_tokens=None,
             device='balanced', 
             torch_dtype=torch_dtype, 
             trust_remote_code=trust_remote_code, 
@@ -247,7 +248,7 @@ class BaseAWQForCausalLM(nn.Module):
         )
 
     @classmethod
-    def from_quantized(self, model_path, model_type, model_filename,
+    def from_quantized(self, model_path, model_type, model_filename, max_new_tokens=None,
                        device='balanced', torch_dtype=torch.float16, trust_remote_code=True, 
                        safetensors=False, is_quantized=True):
         # [STEP 1] Download model if path is not a directory
@@ -263,7 +264,7 @@ class BaseAWQForCausalLM(nn.Module):
         # TODO: Better naming, model_filename becomes a directory
         model_filename = model_path + f'/{model_filename}'
 
-        # [STEP 2] Load config
+        # [STEP 2] Load config and set sequence length
         # TODO: Create BaseAWQConfig class
         quant_config_path = f'{model_path}/quant_config.json'
         if os.path.exists(quant_config_path):
@@ -273,8 +274,15 @@ class BaseAWQForCausalLM(nn.Module):
             # Default config that works for most models
             quant_config = {"zero_point": True, "q_group_size": 128, "w_bit": 4}
         
-        config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
-
+        # Load model config and set max generation length
+        if max_new_tokens is None and hasattr(self, 'max_new_tokens_key'):
+            config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
+            config.max_new_tokens = getattr(config, self.max_new_tokens_key)
+        else:
+            max_new_tokens = 2048 if max_new_tokens is None else max_new_tokens
+            config = AutoConfig.from_pretrained(model_path, trust_remote_code=trust_remote_code)
+            config.max_new_tokens = max_new_tokens
+        
         # [STEP 3] Load model
         with init_empty_weights():
             model = AutoModelForCausalLM.from_config(config=config, torch_dtype=torch_dtype, trust_remote_code=trust_remote_code)

@@ -3,6 +3,7 @@ from transformers.models.opt.modeling_opt import OPTForCausalLM, OPTDecoderLayer
 
 class OptAWQForCausalLM(BaseAWQForCausalLM):
     layer_type = "OPTDecoderLayer"
+    max_new_tokens_key = "max_position_embeddings"
 
     @staticmethod
     def get_model_layers(model: OPTForCausalLM):

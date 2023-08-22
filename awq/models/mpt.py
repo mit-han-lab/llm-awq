@@ -2,6 +2,7 @@ from .base import BaseAWQForCausalLM
 
 class MptAWQForCausalLM(BaseAWQForCausalLM):
     layer_type = "MPTBlock"
+    max_new_tokens_key = "max_seq_len"
 
     @staticmethod
     def get_model_layers(model):

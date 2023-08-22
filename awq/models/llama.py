@@ -3,6 +3,7 @@ from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaFor
 
 class LlamaAWQForCausalLM(BaseAWQForCausalLM):
     layer_type = "LlamaDecoderLayer"
+    max_new_tokens_key = "max_position_embeddings"
 
     @staticmethod
     def get_model_layers(model: LlamaForCausalLM):
