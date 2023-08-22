@@ -46,43 +46,62 @@ def run_quant(model_path, search_path, dump_path, quant_config):
     # Save quantized model
     model.save_quantized(dump_path)
 
-def run_perplexity(quant_path, quant_file, device):
+def run_eval(model_path, quant_file, device, tasks, task_batch_size, task_n_shot, task_use_pretrained):
     """
     Post quantization: Evaluate perplexity on wikitext with EleutherAI Evaluation Harness
     """
     # Load model
-    model = AutoAWQForCausalLM.from_quantized(quant_path, quant_file)
-    tokenizer = AutoTokenizer.from_pretrained(quant_path, trust_remote_code=True)
+    if task_use_pretrained:
+        model = AutoAWQForCausalLM.from_pretrained(model_path)
+    else:
+        model = AutoAWQForCausalLM.from_quantized(model_path, quant_file)
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
     # Load adapter
-    lm_eval_model = LMEvalAdaptor(quant_path, model, tokenizer, device, batch_size=1)
+    lm_eval_model = LMEvalAdaptor(model_path, model, tokenizer, device, batch_size=task_batch_size)
 
     # Evaluate perplexity of quantized model
     results = evaluator.simple_evaluate(
         model=lm_eval_model,
-        tasks=['wikitext'],
-        batch_size=1,
+        tasks=tasks.split(','),
+        batch_size=task_batch_size,
         no_cache=True,
-        num_fewshot=0,
+        num_fewshot=task_n_shot,
     )
 
     print(evaluator.make_table(results))
 
 if __name__ == '__main__':
     """
-    python -m awq.entry --entry_type search --model_path mosaicml/mpt-7b-8k-chat --search_path mpt-7b-8k-chat-awq
-    python -m awq.entry --entry_type quant --model_path mosaicml/mpt-7b-8k-chat --search_path mpt-7b-8k-chat-awq/awq_model_search_result.pt --quant_path mpt-7b-8k-chat-awq
-    python -m awq.entry --entry_type perplexity --quant_path mpt-7b-8k-chat-awq --quant_file awq_model_w4_g128.pt
+    - Run AWQ search and save result:
+    python -m awq.entry --entry_type search --model_path lmsys/vicuna-7b-v1.5 --search_path vicuna-7b-v1.5-awq
+
+    - Run AWQ to save the real quantized weights at the quant_path:
+    python -m awq.entry --entry_type quant --model_path lmsys/vicuna-7b-v1.5 --search_path vicuna-7b-v1.5-awq/awq_model_search_result.pt --quant_path vicuna-7b-v1.5-awq
+
+    - Run perplexity of quantized model:
+    python -m awq.entry --entry_type eval --model_path casperhansen/vicuna-7b-v1.5-awq --quant_file awq_model_w4_g128.pt
+
+    - Run perplexity unquantized FP16 model:
+    python -m awq.entry --entry_type eval --model_path lmsys/vicuna-7b-v1.5 --task_use_pretrained
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--entry_type', type=str, help='The type of task to run (search|quant|perplexity)')
+    parser.add_argument('--entry_type', type=str, help='The type of task to run (search|quant|eval)')
     parser.add_argument('--model_path', type=str, help='Path to hf model')
     parser.add_argument('--search_path', type=str, help='Path to save/load AWQ search results')
-    parser.add_argument('--quant_path', type=str, help='Path to AWQ model directory')
+    parser.add_argument('--quant_path', type=str, help='Path to save AWQ model to directory')
     parser.add_argument('--quant_file', type=str, help='Path to quantized AWQ model file')
     parser.add_argument('--device', type=str, default='cuda:0', help='Device to load model to')
     parser.add_argument('--w_bit', type=int, default=4)
     parser.add_argument('--q_group_size', type=int, default=128)
+    parser.add_argument('--tasks', type=str, default='wikitext', help='Tasks to evaluate. '
+                        'Separate tasks by comma for multiple tasks.'
+                        'https://github.com/EleutherAI/lm-evaluation-harness/blob/master/docs/task_table.md')
+    parser.add_argument("--task_use_pretrained", default=False, action=argparse.BooleanOptionalAction,
+                        help="Pass '--task_use_pretrained' to use a pretrained model running FP16")
+    parser.add_argument('--task_batch_size', type=int, default=1)
+    parser.add_argument('--task_n_shot', type=int, default=0)
     args = parser.parse_args()
 
     quant_config = { "zero_point": True, "q_group_size": args.q_group_size, "w_bit": args.w_bit }
@@ -91,7 +110,8 @@ if __name__ == '__main__':
         run_search(args.model_path, args.search_path, quant_config)
     elif args.entry_type == 'quant':
         run_quant(args.model_path, args.search_path, args.quant_path, quant_config)
-    elif args.entry_type == 'perplexity':
-        run_perplexity(args.quant_path, args.quant_file, args.device)
+    elif args.entry_type == 'eval':
+        run_eval(args.model_path, args.quant_file, args.device, 
+                       args.tasks, args.task_batch_size, args.task_n_shot, args.task_use_pretrained)
     else:
-        raise Exception('--entry_type must be one of (search|quant|perplexity)')
+        raise Exception('--entry_type must be one of (search|quant|eval)')
