@@ -1,14 +1,9 @@
 import torch
 from datasets import load_dataset
-from datasets.builder import DatasetGenerationError
 
 def get_calib_dataset(data="pileval", tokenizer=None, n_samples=512, block_size=512):
     if data == "pileval":
-        try:
-            dataset = load_dataset("json", data_files="https://the-eye.eu/public/AI/pile/val.jsonl.zst", split="train")
-        except DatasetGenerationError:
-            print('The Pile URL is down, using wikitext-103-raw-v1 instead')
-            dataset = load_dataset('wikitext', "wikitext-103-raw-v1", split="train")
+        dataset = load_dataset("mit-han-lab/pile-val-backup", split="validation")
     else:
         raise NotImplementedError
     dataset = dataset.shuffle(seed=42)
