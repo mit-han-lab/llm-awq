@@ -1,9 +1,16 @@
 from .base import BaseAWQForCausalLM
+from awq.modules import make_quant_norm, make_quant_attn, make_fused_mlp
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaForCausalLM
 
 class LlamaAWQForCausalLM(BaseAWQForCausalLM):
     layer_type = "LlamaDecoderLayer"
     max_new_tokens_key = "max_position_embeddings"
+
+    @staticmethod
+    def fuse_layers(awq_model):
+        make_quant_attn(awq_model, awq_model.device)
+        make_quant_norm(awq_model)
+        make_fused_mlp(awq_model)
 
     @staticmethod
     def get_model_layers(model: LlamaForCausalLM):

@@ -7,6 +7,27 @@ from transformers.models.llama.modeling_llama import LlamaMLP
 
 import awq_inference_engine
 
+class QuantMPTMLP(nn.Module):
+    def __init__(
+        self,
+        up_proj,
+        act,
+        down_proj
+    ):
+        super().__init__()
+        self.register_buffer('up_proj_qweight', up_proj.qweight)
+        self.register_buffer('up_proj_scales', up_proj.scales)
+        self.register_buffer('up_proj_qzeros', up_proj.qzeros)
+
+        self.up_proj = up_proj
+        self.act = act
+        self.down_proj = down_proj
+    
+    def forward(self, x: torch.Tensor):
+        x = x.reshape(-1, x.shape[-1])
+        x = awq_inference_engine.gemm_forward_cuda(x, self.up_proj_qweight, self.up_proj_scales, self.up_proj_qzeros, 8)
+
+        return self.down_proj(self.act(x))
 
 class QuantLlamaMLP(nn.Module):
 
@@ -57,10 +78,15 @@ def make_fused_mlp(m, parent_name=''):
     """
     if isinstance(m, LlamaMLP):
         return QuantLlamaMLP(m.gate_proj, m.down_proj, m.up_proj)
+    elif "mptmlp" in str(m.__class__).lower():
+        return QuantMPTMLP(m.up_proj, m.act, m.down_proj)
 
     for name, child in m.named_children():
         child = make_fused_mlp(child, parent_name=f"{parent_name}.{name}")
 
         if isinstance(child, QuantLlamaMLP):
             setattr(m, name, child)
+        elif isinstance(child, QuantMPTMLP):
+            setattr(m, name, child)
+
     return m

@@ -1,8 +1,13 @@
 from .base import BaseAWQForCausalLM
+from awq.modules import make_fused_mlp
 
 class MptAWQForCausalLM(BaseAWQForCausalLM):
     layer_type = "MPTBlock"
     max_new_tokens_key = "max_seq_len"
+
+    @staticmethod
+    def fuse_layers(awq_model):
+        make_fused_mlp(awq_model)
 
     @staticmethod
     def get_model_layers(model):

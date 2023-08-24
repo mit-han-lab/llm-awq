@@ -250,7 +250,7 @@ class BaseAWQForCausalLM(nn.Module):
     @classmethod
     def from_quantized(self, model_path, model_type, model_filename, max_new_tokens=None,
                        device='balanced', torch_dtype=torch.float16, trust_remote_code=True, 
-                       safetensors=False, is_quantized=True):
+                       safetensors=False, is_quantized=True, fuse_layers=False):
         # [STEP 1] Download model if path is not a directory
         if not os.path.isdir(model_path):
             ignore_patterns = ["*msgpack*", "*h5*"]
@@ -297,6 +297,9 @@ class BaseAWQForCausalLM(nn.Module):
         # Load model weights
         if is_quantized:
             model = load_checkpoint_and_dispatch(model, model_filename, device_map=device, no_split_module_classes=[self.layer_type])
+
+            if fuse_layers:
+                self.fuse_layers(model)
 
         else:
             # If not quantized, must load with AutoModelForCausalLM

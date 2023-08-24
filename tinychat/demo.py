@@ -116,13 +116,6 @@ if __name__ == '__main__':
     else:
         stream_generator = StreamGenerator
 
-    # Optimize AWQ quantized model
-    if args.precision == "W4A16" and isinstance(model, LlamaAWQForCausalLM):
-        from tinychat.modules import make_quant_norm, make_quant_attn, make_fused_mlp
-        make_quant_attn(model.model, args.device)
-        make_quant_norm(model.model)
-        make_fused_mlp(model.model)
-
     model_prompter = get_prompter(model, args.model_path)
     stop_token_ids = get_stop_token_ids(model, args.model_path) 
     count = 0
