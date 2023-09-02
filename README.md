@@ -20,7 +20,7 @@ It also offers a turn-key solution for **on-device inference** of LLMs on **reso
 
 
 ## News
-- [2023/09] ⚡ **AutoAWQ** was released to make AWQ easier to expand to new models, improve inference speed, and integrate into Huggingface. Check out the package here: [AutoAWQ](https://github.com/casper-hansen/AutoAWQ).
+- [2023/09] ⚡ Check out [**AutoAWQ**](https://github.com/casper-hansen/AutoAWQ), a third-party implementation to make AWQ easier to expand to new models, improve inference speed, and integrate into Huggingface.
 - [2023/07] 🔥 We released **TinyChat**, an efficient and lightweight chatbot interface based on AWQ. TinyChat enables efficient LLM inference on both cloud and edge GPUs. LLama-2-chat models are supported! Check out our implementation [here](tinychat).
 - [2023/07] 🔥 We added AWQ support and pre-computed search results for Llama-2 models (7B & 13B). Checkout our model zoo [here](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo)!
 - [2023/07] We extended the support for more LLM models including MPT, Falcon, and BLOOM. 
