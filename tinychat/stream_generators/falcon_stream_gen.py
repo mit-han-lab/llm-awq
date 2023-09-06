@@ -9,6 +9,7 @@ from transformers import TextIteratorStreamer, GenerationConfig
 
 transformers.logging.set_verbosity_error()
 
+
 def is_partial_stop(output: str, stop_str: str):
     """Check whether the output contains a partial stop str."""
     for i in range(0, min(len(output), len(stop_str))):
@@ -21,15 +22,15 @@ def is_partial_stop(output: str, stop_str: str):
 def FalconStreamGenerator(
     model,
     tokenizer,
-    input : str,
-    gen_params : dict,
+    input: str,
+    gen_params: dict,
     device: str = "cuda:0",
-    context_len = 2048,
-    stream_interval = 2,
-    judge_sent_end = False,
+    context_len=2048,
+    stream_interval=2,
+    judge_sent_end=False,
     echo: bool = False,
     stop_str: str = "\nUser",
-    stop_token_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    stop_token_ids=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
 ):
     prompt = input
     len_prompt = len(prompt)
@@ -54,14 +55,14 @@ def FalconStreamGenerator(
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, **decode_config)
 
     generation_config = GenerationConfig(
-        max_new_tokens = max_new_tokens,
-        do_sample = gen_params.temp >= 1e-5,
-        temperature = gen_params.temp,
-        repetition_penalty = gen_params.repeat_penalty,
-        no_repeat_ngram_size = 10,
-        top_p = gen_params.top_p,
-        top_k = top_k,
-        eos_token_id = stop_token_ids,
+        max_new_tokens=max_new_tokens,
+        do_sample=gen_params.temp >= 1e-5,
+        temperature=gen_params.temp,
+        repetition_penalty=gen_params.repeat_penalty,
+        no_repeat_ngram_size=10,
+        top_p=gen_params.top_p,
+        top_k=top_k,
+        eos_token_id=stop_token_ids,
     )
 
     generation_kwargs = dict(

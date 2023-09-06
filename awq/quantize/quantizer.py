@@ -127,8 +127,8 @@ def real_quantize_model_weight(
             else:
                 module.cuda()
                 module.weight.data, scales, zeros = pseudo_quantize_tensor(module.weight.data, n_bit=w_bit, get_scale_zp=True, **q_config)
-                scales = scales.t().contiguous()
-                zeros = zeros.t().contiguous()
+                # scales = scales.t().contiguous()
+                # zeros = zeros.t().contiguous()
                 q_linear = WQLinear.from_linear(
                     module, w_bit, q_config['q_group_size'], False, scales, zeros)
                 module.cpu()
