@@ -15,6 +15,7 @@ context_time = 0.0
 total_tokens = 0
 generation_time_list = []
 
+
 def prepare_logits_processor(
     temperature: float, repetition_penalty: float, top_p: float, top_k: int
 ) -> LogitsProcessorList:
@@ -32,14 +33,15 @@ def prepare_logits_processor(
 
 
 @torch.inference_mode()
-def StreamGenerator(model,
-                    tokenizer,
-                    input : str,
-                    gen_params : dict,
-                    device: str = "cuda:0",
-                    stream_interval: int = 2,
-                    echo: bool = False,
-                    stop_token_ids = []
+def StreamGenerator(
+    model,
+    tokenizer,
+    input: str,
+    gen_params: dict,
+    device: str = "cuda:0",
+    stream_interval: int = 2,
+    echo: bool = False,
+    stop_token_ids=[],
 ):
     input_ids = tokenizer(input).input_ids
     input_echo_len = len(input_ids)
@@ -54,26 +56,43 @@ def StreamGenerator(model,
     logits_processor = prepare_logits_processor(
         gen_params.temp, gen_params.repeat_penalty, gen_params.top_p, top_k
     )
-    
+
     past_key_values = out = None
     stop_token_ids.append(tokenizer.eos_token_id)
     max_new_tokens = gen_params.n_predict
+    start_pos = 0
     for i in range(max_new_tokens):
         torch.cuda.synchronize()
         t_st = time.time()
 
-        if i == 0:  # Context Stage
-            out = model(torch.as_tensor([input_ids], device=device), use_cache=True)
-            logits = out.logits
-            past_key_values = out.past_key_values
+        if i == 0:
+            inputs = torch.as_tensor([input_ids], device=device)
         else:
-            out = model(
-                input_ids=torch.as_tensor([[token]], device=device),
-                use_cache=True,
-                past_key_values=past_key_values,
-            )
-            logits = out.logits
-            past_key_values = out.past_key_values
+            inputs = torch.as_tensor([[token]], device=device)
+
+        if (
+            "llama" not in model.__class__.__name__.lower()
+            and "mpt" not in model.__class__.__name__.lower()
+            and "falcon" not in model.__class__.__name__.lower()
+        ):
+            if i == 0:  # Context Stage
+                out = model(inputs, use_cache=True)
+                logits = out.logits
+                past_key_values = out.past_key_values
+            else:
+                out = model(
+                    input_ids=inputs,
+                    use_cache=True,
+                    past_key_values=past_key_values,
+                )
+                logits = out.logits
+                past_key_values = out.past_key_values
+        else:
+            out = model(inputs, start_pos=start_pos)
+            start_pos += out.shape[1]
+            logits = out
+        torch.cuda.synchronize()
+        t_ed = time.time()
 
         # Processing the logits
         if logits_processor:
@@ -91,9 +110,6 @@ def StreamGenerator(model,
             token = int(torch.multinomial(probs, num_samples=1))
         output_ids.append(token)
 
-        torch.cuda.synchronize()
-        t_ed = time.time()
-
         global context_time
         global context_tokens
         global total_tokens
@@ -103,13 +119,12 @@ def StreamGenerator(model,
             context_tokens = logits.shape[1]
             generation_time_list = []
         else:
-            generation_time_list.append(t_ed-t_st)
-        
+            generation_time_list.append(t_ed - t_st)
+
         if token in stop_token_ids:
             stopped = True
         else:
-            stopped = False 
-
+            stopped = False
 
         if i % stream_interval == 0 or i == max_new_tokens - 1 or stopped:
             if echo:
@@ -151,7 +166,7 @@ def StreamGenerator(model,
     else:
         finish_reason = None
 
-    total_tokens = (context_tokens + len(generation_time_list))
+    total_tokens = context_tokens + len(generation_time_list)
     yield {
         "text": output,
         "usage": {
@@ -160,12 +175,12 @@ def StreamGenerator(model,
             "total_tokens": input_echo_len + i,
         },
         "finish_reason": finish_reason,
-        "timing":{
+        "timing": {
             "context_tokens": context_tokens,
             "context_time": context_time,
             "total_tokens": total_tokens,
             "generation_time_list": generation_time_list,
-        }
+        },
     }
 
     del past_key_values, out

@@ -29,7 +29,7 @@ The current release supports:
 
 ## Examples
 
-Thanks to AWQ, TinyChat can now deliver more prompt responses through 4-bit inference. The following examples showcase that TinyChat's W4A16 generation is 2.3x faster on RTX 4090 and 1.4x faster on Jetson Orin, compared to the FP16 baselines. (Tested with [LLaMA-2-7b]( https://huggingface.co/meta-llama/Llama-2-7b-chat-hf ) model.)
+Thanks to AWQ, TinyChat can now deliver more prompt responses through 4-bit inference. The following examples showcase that TinyChat's W4A16 generation is up to 3.7x faster on RTX 4090 and 3.3x faster on Jetson Orin, compared to the FP16 baselines. (Tested with [LLaMA-2-7b]( https://huggingface.co/meta-llama/Llama-2-7b-chat-hf ) model.)
 
 * TinyChat on RTX 4090:
 
@@ -44,7 +44,7 @@ Thanks to AWQ, TinyChat can now deliver more prompt responses through 4-bit infe
 
 We benchmark TinyChat on A6000 (server-class GPU), 4090 (desktop GPU) and Orin (edge GPU).
 
-We use the default implementation from Huggingface for the FP16 baseline. The INT4 implementation applies AWQ and utilizes our fast W4A16 GPU kernel. Please notice that the end-to-end runtime for INT4 TinyChat could be further improved if we reduce the framework overhead from Huggingface (e.g. utilizing the implementation from TGI). We are working on a new release with even faster inference performance, please stay tuned!
+We use the default implementation from Huggingface for the FP16 baseline. The INT4 implementation applies AWQ and utilizes our fast W4A16 GPU kernel. We also apply additional optimization techniques in the latest release. For example, we fuse all the operations in MHA/GQA/MQA into a single kernel, and fuse positional embedding kernels into the attention kernel. We also pre-allocate key-value caches to avoid the online memory allocation overhead from Huggingface.
 
 The latency reported in all tables are per-token latency for the generation stage.
 
@@ -52,37 +52,40 @@ The latency reported in all tables are per-token latency for the generation stag
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 27.14             | 12.44             | 2.18x   |
-| LLaMA-2-13B | 47.28             | 20.28             | 2.33x   |
-| Vicuna-7B   | 26.06             | 12.43             | 2.10x   |
-| Vicuna-13B  | 44.91             | 17.30             | 2.60x   |
-| MPT-7B      | 22.79             | 16.87             | 1.35x   |
-| MPT-30B     | OOM               | 31.57             | --      |
-| Falcon-7B   | 39.44             | 27.34             | 1.44x   |
+| LLaMA-2-7B  | 27.14             |     8.71         | 3.12x   |
+| LLaMA-2-13B | 47.28             |     14.64         | 3.23x   |
+| Vicuna-7B   | 26.06             |     8.39         | 3.11x   |
+| Vicuna-13B  | 44.91             |     13.46         | 3.34x   |
+| MPT-7B      | 22.79             |    7.99          | 2.85x   |
+| MPT-30B     | OOM               |   28.15           | --      |
+| Falcon-7B   | 39.44             |     11.71         | 3.37x   |
 
 ### 4090 Results
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 19.97             | 8.66              | 2.31x   |
-| LLaMA-2-13B | OOM               | 13.54             | --      |
-| Vicuna-7B   | 19.09             | 8.61              | 2.22x   |
-| Vicuna-13B  | OOM               | 12.17             | --      |
-| MPT-7B      | 17.09             | 12.58             | 1.36x   |
-| MPT-30B     | OOM               | 23.54             | --      |
-| Falcon-7B   | 29.91             | 19.84             | 1.51x   |
+| LLaMA-2-7B  | 19.97             | 6.02*              | 3.31x   |
+| LLaMA-2-13B | OOM               | 10.35             | --      |
+| Vicuna-7B   | 19.09             | 5.33              | 3.58x   |
+| Vicuna-13B  | OOM               | 9.17             | --      |
+| MPT-7B      | 17.09             | 6.18             | 2.77x   |
+| MPT-30B     | OOM               | 20.60             | --      |
+| Falcon-7B   | 29.91             | 8.02             | 3.73x   |
+
+*: The reason why LLaMA-2-7B is slower than Vicuna-7B is because we need a longer prompt (with > 500 tokens) to prevent the model from talking with itself. If we use the benchmarking strategy from exLLaMA (i.e. only 4 context tokens), our speed is around 195 tokens / second.
 
 ### Orin Results
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 104.71            | 75.11             | 1.39x   |
-| LLaMA-2-13B | OOM               | 136.81            | --      |
-| Vicuna-7B   | 93.12             | 65.34             | 1.43x   |
-| Vicuna-13B  | OOM               | 115.4             | --      |
-| MPT-7B      | 89.85             | 67.36             | 1.33x   |
-| Falcon-7B   | 147.84            | 102.74            | 1.44x   |
+| LLaMA-2-7B  | 104.71            | 33.07*             | 3.17x   |
+| LLaMA-2-13B | OOM               | 58.20            | --      |
+| Vicuna-7B   | 93.12             | 30.73             | 3.03x   |
+| Vicuna-13B  | OOM               | 54.98             | --      |
+| MPT-7B      | 89.85             | 31.22             | 2.88x   |
+| Falcon-7B   | 147.84            | 45.10            | 3.28x   |
 
+*: We can similarly achieve 33 tokens / second on Orin if we use the benchmarking strategy from exLLaMA.
 
 ## Usage
 
@@ -153,11 +156,21 @@ python demo.py --model_type llama \
     --precision W16A16
 ```
 
+5. (Optional) Run the benchmark script:
 
+```bash
+cd tinychat
+python benchmark.py --model_type llama \
+    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat	\
+    --q_group_size 128
+```
+
+Note: The kv caches in the current implementation are pre-allocated. So if you run out of memory, it might be the case that the kv cache is too large. To solve the problem, you may pass in `--max_seq_len [a smaller number]`.
 
 ## Reference
 
-TinyChat is inspired by the following open-source projects: [FasterTransformer](https://github.com/NVIDIA/FasterTransformer), [vLLM](https://github.com/vllm-project/vllm), [FastChat](https://github.com/lm-sys/FastChat).
+TinyChat is inspired by the following open-source projects: [FasterTransformer](https://github.com/NVIDIA/FasterTransformer), [FlashAttention](https://github.com/Dao-AILab/flash-attention), [vLLM](https://github.com/vllm-project/vllm), [FastChat](https://github.com/lm-sys/FastChat), [llama_cu_awq](https://github.com/ankan-ban/llama_cu_awq).
+
 
 
 

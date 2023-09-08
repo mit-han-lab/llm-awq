@@ -20,7 +20,7 @@ def get_named_linears(module):
 
 
 def get_blocks(model):
-    if isinstance(model, LlamaForCausalLM):
+    if model.__class__.__name__ == 'LlamaForCausalLM':
         layers = model.model.layers
     elif isinstance(model, OPTForCausalLM):
         layers = model.model.decoder.layers
