@@ -2,8 +2,6 @@
 
 We introduce TinyChat, a cutting-edge chatbot interface designed for lightweight resource consumption and fast inference speed on GPU platforms. It allows for seamless deployment on consumer-level GPUs such as 3090/4090 and low-power edge devices like the NVIDIA Jetson Orin, empowering users with a responsive conversational experience like never before.
 
-
-
 The current release supports:
 
 - LLaMA-2-7B/13B-chat;
@@ -14,8 +12,6 @@ The current release supports:
 
 - Falcon-instruct.
 
-
-
 ## Contents
 
 - [Examples](#examples)
@@ -25,7 +21,6 @@ The current release supports:
 - [Usage](#usage)
 
 - [Reference](#reference)
-
 
 ## Examples
 
@@ -39,7 +34,6 @@ Thanks to AWQ, TinyChat can now deliver more prompt responses through 4-bit infe
 
 ![TinyChat on Jetson Orin: W4A16 is 1.4x faster than FP16](./figures/orin_example.gif)
 
-
 ## Benchmarks
 
 We benchmark TinyChat on A6000 (server-class GPU), 4090 (desktop GPU) and Orin (edge GPU).
@@ -52,25 +46,25 @@ The latency reported in all tables are per-token latency for the generation stag
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 27.14             |     8.71         | 3.12x   |
-| LLaMA-2-13B | 47.28             |     14.64         | 3.23x   |
-| Vicuna-7B   | 26.06             |     8.39         | 3.11x   |
-| Vicuna-13B  | 44.91             |     13.46         | 3.34x   |
-| MPT-7B      | 22.79             |    7.99          | 2.85x   |
-| MPT-30B     | OOM               |   28.15           | --      |
-| Falcon-7B   | 39.44             |     11.71         | 3.37x   |
+| LLaMA-2-7B  | 27.14             | 8.71              | 3.12x   |
+| LLaMA-2-13B | 47.28             | 14.64             | 3.23x   |
+| Vicuna-7B   | 26.06             | 8.39              | 3.11x   |
+| Vicuna-13B  | 44.91             | 13.46             | 3.34x   |
+| MPT-7B      | 22.79             | 7.99              | 2.85x   |
+| MPT-30B     | OOM               | 28.15             | --      |
+| Falcon-7B   | 39.44             | 11.71             | 3.37x   |
 
 ### 4090 Results
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 19.97             | 6.02*              | 3.31x   |
+| LLaMA-2-7B  | 19.97             | 6.02*             | 3.31x   |
 | LLaMA-2-13B | OOM               | 10.35             | --      |
 | Vicuna-7B   | 19.09             | 5.33              | 3.58x   |
-| Vicuna-13B  | OOM               | 9.17             | --      |
-| MPT-7B      | 17.09             | 6.18             | 2.77x   |
+| Vicuna-13B  | OOM               | 9.17              | --      |
+| MPT-7B      | 17.09             | 6.18              | 2.77x   |
 | MPT-30B     | OOM               | 20.60             | --      |
-| Falcon-7B   | 29.91             | 8.02             | 3.73x   |
+| Falcon-7B   | 29.91             | 8.02              | 3.73x   |
 
 *: The reason why LLaMA-2-7B is slower than Vicuna-7B is because we need a longer prompt (with > 500 tokens) to prevent the model from talking with itself. If we use the benchmarking strategy from exLLaMA (i.e. only 4 context tokens), our speed is around 195 tokens / second.
 
@@ -78,12 +72,12 @@ The latency reported in all tables are per-token latency for the generation stag
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 104.71            | 33.07*             | 3.17x   |
-| LLaMA-2-13B | OOM               | 58.20            | --      |
+| LLaMA-2-7B  | 104.71            | 33.07*            | 3.17x   |
+| LLaMA-2-13B | OOM               | 58.20             | --      |
 | Vicuna-7B   | 93.12             | 30.73             | 3.03x   |
 | Vicuna-13B  | OOM               | 54.98             | --      |
 | MPT-7B      | 89.85             | 31.22             | 2.88x   |
-| Falcon-7B   | 147.84            | 45.10            | 3.28x   |
+| Falcon-7B   | 147.84            | 45.10             | 3.28x   |
 
 *: We can similarly achieve 33 tokens / second on Orin if we use the benchmarking strategy from exLLaMA.
 
@@ -101,9 +95,7 @@ The latency reported in all tables are per-token latency for the generation stag
    
    - For Falcon-instruct, please refer to [this link](https://huggingface.co/tiiuae/falcon-7b-instruct).
 
-
 3. Quantize instruction-tuned LLMs with AWQ:
-
 - We provide pre-computed AWQ search results for multiple model families, including LLaMA, OPT, Vicuna, and LLaVA. To get the pre-computed AWQ search results, run:
 
 ```bash
@@ -156,12 +148,33 @@ python demo.py --model_type llama \
     --precision W16A16
 ```
 
+The above command works well for most cloud and desktop GPUs, since their CPU and GPU memory space are separated. However, for edge GPUs with shared host and device memory, in order to run larger models (e.g. LLaMA-2-70B on 64GB Orin), it is necessary to break down the pretrained checkpoints into small pieces:
+
+```bash
+python split_ckpt.py --input_path quant_cache/llama-2-7b-chat-w4-g128-awq.pt \
+    --output_path quant_cache/llama-2-7b-chat-w4-g128-awq
+```
+
+Then, to run the demo, one can use the following command. The only changes compared with the demo command above are: 
+
+- We modify the `load_quant` argument;
+
+- We introduce another flag `mem_efficient_load`.
+
+```bash
+cd tinychat
+python demo.py --model_type llama \
+    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
+    --q_group_size 128 --load_quant quant_cache/llama-2-7b-chat-w4-g128-awq \ 
+    --precision W4A16 --mem_efficient_load
+```
+
 5. (Optional) Run the benchmark script:
 
 ```bash
 cd tinychat
 python benchmark.py --model_type llama \
-    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat	\
+    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat    \
     --q_group_size 128
 ```
 
@@ -170,7 +183,4 @@ Note: The kv caches in the current implementation are pre-allocated. So if you r
 ## Reference
 
 TinyChat is inspired by the following open-source projects: [FasterTransformer](https://github.com/NVIDIA/FasterTransformer), [FlashAttention](https://github.com/Dao-AILab/flash-attention), [vLLM](https://github.com/vllm-project/vllm), [FastChat](https://github.com/lm-sys/FastChat), [llama_cu_awq](https://github.com/ankan-ban/llama_cu_awq).
-
-
-
 

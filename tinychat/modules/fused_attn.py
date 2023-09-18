@@ -11,9 +11,12 @@ from typing import Optional
 from awq.quantize.qmodule import WQLinear
 import awq_inference_engine
 from tinychat.models.llama import apply_rotary_emb
+import gc
 
+import tinychat.utils.constants
 
-max_batch_size: int = 1
+max_batch_size = tinychat.utils.constants.max_batch_size
+max_seq_len = tinychat.utils.constants.max_seq_len
 
 
 class QuantLlamaRotaryEmbedding(nn.Module):
@@ -163,19 +166,31 @@ class QuantLlamaAttention(nn.Module):
 class QuantLlamaAttentionFused(nn.Module):
     def __init__(self, hidden_size, num_heads, qkv_layer, o_proj, dev, args):
         super().__init__()
-        self.hidden_size = hidden_size
-        self.n_local_heads = num_heads
-        self.head_dim = self.hidden_size // num_heads
+
+        self.args = args
+        self.n_local_heads = args.num_attention_heads
+        self.hidden_size = args.hidden_size
+        self.num_heads = args.num_attention_heads
+        self.head_dim = self.hidden_size // self.num_heads
+
+        self.num_key_value_heads = args.num_key_value_heads
+        self.num_key_value_groups = self.num_heads // self.num_key_value_heads
+        self.max_position_embeddings = args.max_position_embeddings
+        # self.rope_theta = args.rope_theta
+
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
+
+        kv_max_seq_len = min(max_seq_len, args.max_position_embeddings)
 
         # following fastertransformer definition
         self.cache_v = (
             torch.zeros(
                 (
                     max_batch_size,
-                    self.n_local_heads,
-                    args.max_position_embeddings,
+                    self.num_key_value_heads,
+                    # args.max_position_embeddings,
+                    kv_max_seq_len,
                     self.head_dim,
                 )
             )
@@ -187,9 +202,10 @@ class QuantLlamaAttentionFused(nn.Module):
             torch.zeros(
                 (
                     max_batch_size,
-                    self.n_local_heads,
+                    self.num_key_value_heads,
                     self.head_dim // 8,
-                    args.max_position_embeddings,
+                    # args.max_position_embeddings,
+                    kv_max_seq_len,
                     8,
                 )
             )
@@ -211,15 +227,22 @@ class QuantLlamaAttentionFused(nn.Module):
     ):
         bsz, seqlen, _ = x.shape
         xqkv = self.qkv_proj(x)
-        xqkv = xqkv.view(bsz, seqlen, -1, self.n_local_heads, self.head_dim)
-        xq = xqkv[:, :, 0]
-        xk = xqkv[:, :, 1]
-        xv = xqkv[:, :, 2]
+        xqkv = xqkv.view(
+            bsz,
+            seqlen,
+            self.n_local_heads + self.num_key_value_heads * 2,
+            self.head_dim,
+        )
+        xq = xqkv[:, :, 0 : self.n_local_heads]
+        xk = xqkv[
+            :, :, self.n_local_heads : (self.n_local_heads + self.num_key_value_heads)
+        ]
+        xv = xqkv[:, :, -self.num_key_value_heads :]
 
         if seqlen > 1:
             xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
-            xk = xk.view(bsz, seqlen, self.n_local_heads, self.head_dim)
-            xv = xv.view(bsz, seqlen, self.n_local_heads, self.head_dim)
+            xk = xk.view(bsz, seqlen, self.num_key_value_heads, self.head_dim)
+            xv = xv.view(bsz, seqlen, self.num_key_value_heads, self.head_dim)
 
             xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
@@ -228,7 +251,7 @@ class QuantLlamaAttentionFused(nn.Module):
 
             values_store = xv.transpose(2, 1)
             keys_store = (
-                xk.reshape(bsz, seqlen, self.n_local_heads, self.head_dim // 8, 8)
+                xk.reshape(bsz, seqlen, self.num_key_value_heads, self.head_dim // 8, 8)
                 .permute(0, 2, 3, 1, 4)
                 .contiguous()
             )
@@ -238,6 +261,13 @@ class QuantLlamaAttentionFused(nn.Module):
 
             keys = xk
             values = xv
+
+            keys = torch.repeat_interleave(
+                keys, dim=2, repeats=self.num_key_value_groups
+            )
+            values = torch.repeat_interleave(
+                values, dim=2, repeats=self.num_key_value_groups
+            )
 
             xq = xq.transpose(1, 2)
             keys = keys.transpose(1, 2)
@@ -249,9 +279,10 @@ class QuantLlamaAttentionFused(nn.Module):
             output = torch.matmul(scores, values)  # (bs, n_local_heads, slen, head_dim)
             output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
         else:
-            xq = xq[:, 0, :, :]
-            xk = xk[:, 0, :, :]
-            xv = xv[:, 0, :, :]
+            xq = xq.view(bsz, self.n_local_heads, self.head_dim)
+            xk = xk.view(bsz, self.num_key_value_heads, self.head_dim)
+            xv = xv.view(bsz, self.num_key_value_heads, self.head_dim)
+
             output = awq_inference_engine.single_query_attention(
                 xq,
                 xk,
@@ -334,4 +365,6 @@ def make_quant_attn(model, dev):
 
         # print(f"Replacing {name} with quant_attn; parent: {parent_name}, child's name: {child_name}")
         setattr(parent, child_name, attn)
+        gc.collect()
+        torch.cuda.empty_cache()
     model = model.to(dev)

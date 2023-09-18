@@ -15,6 +15,7 @@ import tinychat.utils.constants
 max_batch_size = tinychat.utils.constants.max_batch_size
 max_seq_len = tinychat.utils.constants.max_seq_len
 
+
 # rotary pos emb helpers (torch.jit.script does not seem to support staticmethod...)
 def rotate_half(x):
     x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]

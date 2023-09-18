@@ -19,6 +19,7 @@ max_batch_size = tinychat.utils.constants.max_batch_size
 multiple_of = tinychat.utils.constants.llama_multiple_of
 max_seq_len = tinychat.utils.constants.max_seq_len
 
+
 class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
         super().__init__()
@@ -74,37 +75,44 @@ class LlamaAttentionFused(nn.Module):
         super().__init__()
         self.args = args
         self.n_local_heads = args.num_attention_heads
-        self.head_dim = args.hidden_size // args.num_attention_heads
-        kv_max_seq_len = min(max_seq_len, args.max_position_embeddings)
+        self.hidden_size = args.hidden_size
+        self.num_heads = args.num_attention_heads
+        self.head_dim = self.hidden_size // self.num_heads
+
+        self.num_key_value_heads = args.num_key_value_heads
+        self.num_key_value_groups = self.num_heads // self.num_key_value_heads
+        self.max_position_embeddings = args.max_position_embeddings
+        # self.rope_theta = args.rope_theta
+
+        kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
 
         self.q_proj = nn.Linear(
-            args.hidden_size,
-            args.num_attention_heads * self.head_dim,
+            self.hidden_size,
+            self.num_heads * self.head_dim,
             bias=False,
         )
         self.k_proj = nn.Linear(
-            args.hidden_size,
-            args.num_attention_heads * self.head_dim,
+            self.hidden_size,
+            self.num_key_value_heads * self.head_dim,
             bias=False,
         )
         self.v_proj = nn.Linear(
-            args.hidden_size,
-            args.num_attention_heads * self.head_dim,
+            self.hidden_size,
+            self.num_key_value_heads * self.head_dim,
             bias=False,
         )
         self.o_proj = nn.Linear(
-            args.num_attention_heads * self.head_dim,
-            args.hidden_size,
+            self.num_heads * self.head_dim,
+            self.hidden_size,
             bias=False,
         )
 
         # following fastertransformer definition
-
         self.cache_v = (
             torch.zeros(
                 (
                     max_batch_size,
-                    self.n_local_heads,
+                    self.num_key_value_heads,
                     # args.max_position_embeddings,
                     kv_max_seq_len,
                     self.head_dim,
@@ -118,7 +126,7 @@ class LlamaAttentionFused(nn.Module):
             torch.zeros(
                 (
                     max_batch_size,
-                    self.n_local_heads,
+                    self.num_key_value_heads,
                     self.head_dim // 8,
                     # args.max_position_embeddings,
                     kv_max_seq_len,
@@ -152,8 +160,8 @@ class LlamaAttentionFused(nn.Module):
 
         if seqlen > 1:
             xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
-            xk = xk.view(bsz, seqlen, self.n_local_heads, self.head_dim)
-            xv = xv.view(bsz, seqlen, self.n_local_heads, self.head_dim)
+            xk = xk.view(bsz, seqlen, self.num_key_value_heads, self.head_dim)
+            xv = xv.view(bsz, seqlen, self.num_key_value_heads, self.head_dim)
 
             xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
@@ -162,7 +170,7 @@ class LlamaAttentionFused(nn.Module):
 
             values_store = xv.transpose(2, 1)
             keys_store = (
-                xk.reshape(bsz, seqlen, self.n_local_heads, self.head_dim // 8, 8)
+                xk.reshape(bsz, seqlen, self.num_key_value_heads, self.head_dim // 8, 8)
                 .permute(0, 2, 3, 1, 4)
                 .contiguous()
             )
@@ -172,6 +180,13 @@ class LlamaAttentionFused(nn.Module):
 
             keys = xk
             values = xv
+
+            keys = torch.repeat_interleave(
+                keys, dim=2, repeats=self.num_key_value_groups
+            )
+            values = torch.repeat_interleave(
+                values, dim=2, repeats=self.num_key_value_groups
+            )
 
             xq = xq.transpose(1, 2)
             keys = keys.transpose(1, 2)
@@ -183,12 +198,9 @@ class LlamaAttentionFused(nn.Module):
             output = torch.matmul(scores, values)  # (bs, n_local_heads, slen, head_dim)
             output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
         else:
-            # xq = xq[:, 0, :, :]
-            # xk = xk[:, 0, :, :]
-            # xv = xv[:, 0, :, :]
             xq = xq.view(bsz, self.n_local_heads, self.head_dim)
-            xk = xk.view(bsz, self.n_local_heads, self.head_dim)
-            xv = xv.view(bsz, self.n_local_heads, self.head_dim)
+            xk = xk.view(bsz, self.num_key_value_heads, self.head_dim)
+            xv = xv.view(bsz, self.num_key_value_heads, self.head_dim)
 
             output = awq_inference_engine.single_query_attention(
                 xq,
@@ -210,19 +222,14 @@ class LlamaAttentionFused(nn.Module):
 
 
 class LlamaMLP(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        hidden_dim: int,
-        multiple_of: int,
-    ):
+    def __init__(self, args):
         super().__init__()
-        hidden_dim = int(2 * hidden_dim / 3)
-        hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
+        self.hidden_size = args.hidden_size
+        self.intermediate_size = args.intermediate_size
 
-        self.gate_proj = nn.Linear(dim, hidden_dim, bias=False)
-        self.down_proj = nn.Linear(hidden_dim, dim, bias=False)
-        self.up_proj = nn.Linear(dim, hidden_dim, bias=False)
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
 
     def forward(self, x):
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
@@ -235,11 +242,7 @@ class TransformerBlock(nn.Module):
         self.dim = args.hidden_size
         self.head_dim = args.hidden_size // args.num_attention_heads
         self.self_attn = LlamaAttentionFused(args)
-        self.mlp = LlamaMLP(
-            dim=args.hidden_size,
-            hidden_dim=4 * args.hidden_size,
-            multiple_of=multiple_of,
-        )
+        self.mlp = LlamaMLP(args)
         self.layer_id = layer_id
         self.input_layernorm = RMSNorm(args.hidden_size, eps=args.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(args.hidden_size, eps=args.rms_norm_eps)

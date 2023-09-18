@@ -14,8 +14,10 @@ from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 # from flash_attn.flash_attn_interface import flash_attn_unpadded_func
 
 import tinychat.utils.constants
+
 max_batch_size = tinychat.utils.constants.max_batch_size
 global_max_seq_len = tinychat.utils.constants.max_seq_len
+
 
 def gen_slopes(n_heads, alibi_bias_max=8):
     _n_heads = 2 ** math.ceil(math.log2(n_heads))
