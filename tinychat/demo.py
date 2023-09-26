@@ -118,6 +118,11 @@ if __name__ == "__main__":
         action="store_true",
         help="enable mem_efficient_load mod",
     )
+    parser.add_argument(
+        "--single_round",
+        action="store_true",
+        help="whether to memorize previous conversations",
+    )
 
     args = parser.parse_args()
     assert args.model_type.lower() in [
@@ -201,11 +206,15 @@ if __name__ == "__main__":
     # Optimize AWQ quantized model
     if args.precision == "W4A16" and args.model_type.lower() == "llama":
         from tinychat.modules import make_quant_norm, make_quant_attn, make_fused_mlp
-
         make_quant_attn(model, args.device)
         make_quant_norm(model)
         make_fused_mlp(model)
-    model_prompter = get_prompter(args.model_type, args.model_path)
+
+    if args.max_seq_len <= 1024:
+        short_prompt = True
+    else:
+        short_prompt = False
+    model_prompter = get_prompter(args.model_type, args.model_path, short_prompt)
     stop_token_ids = get_stop_token_ids(args.model_type, args.model_path)
     count = 0
     while True:
@@ -224,5 +233,6 @@ if __name__ == "__main__":
             stop_token_ids=stop_token_ids,
         )
         outputs = stream_output(output_stream)
-        model_prompter.update_template(outputs)
+        if args.single_round is not True and args.max_seq_len > 512:      # Only memorize previous conversations when kv_cache_size > 512    
+            model_prompter.update_template(outputs)
         count += 1
