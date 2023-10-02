@@ -20,3 +20,12 @@ python demo.py --model_type llama \
     --q_group_size 128 --load_quant quant_cache/llama-2-7b-chat-w4-g128-awq.pt \
     --precision W4A16
 
+# Split checkpoint into shards for mem-efficient loading:
+python split_ckpt.py --input_path quant_cache/llama-2-7b-chat-w4-g128-awq.pt \
+    --output_path quant_cache/llama-2-7b-chat-w4-g128-awq
+
+# Run the TinyChat demo in mem_efficient_load mode:
+python demo.py --model_type llama \
+    --model_path $MODEL_PATH/$MODEL_NAME \
+    --q_group_size 128 --load_quant quant_cache/llama-2-7b-chat-w4-g128-awq \
+    --precision W4A16 --mem_efficient_load

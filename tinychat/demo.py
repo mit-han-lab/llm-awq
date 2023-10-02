@@ -108,13 +108,20 @@ if __name__ == "__main__":
         "--max_seq_len",
         type=int,
         default=2048,
-        help="maximum sequence length for kv cache"
+        help="maximum sequence length for kv cache",
     )
     parser.add_argument(
-        "--max_batch_size",
-        type=int,
-        default=1,
-        help="maximum batch size for kv cache"
+        "--max_batch_size", type=int, default=1, help="maximum batch size for kv cache"
+    )
+    parser.add_argument(
+        "--mem_efficient_load",
+        action="store_true",
+        help="enable mem_efficient_load mod",
+    )
+    parser.add_argument(
+        "--single_round",
+        action="store_true",
+        help="whether to memorize previous conversations",
     )
 
     args = parser.parse_args()
@@ -129,7 +136,14 @@ if __name__ == "__main__":
     gen_params.n_vocab = 32000
     tinychat.utils.constants.max_batch_size = args.max_batch_size
     tinychat.utils.constants.max_seq_len = args.max_seq_len
-    # TODO (Haotian): a more elegant implementation here. 
+    tinychat.utils.constants.mem_efficient_load = args.mem_efficient_load
+    if tinychat.utils.constants.mem_efficient_load:
+        print("=" * 80)
+        print(
+            "[Info] You have activated mem_efficient_load mode.\n       Less on-chip memory will be consumed when loading the model.\n       However, the loading process will take more time."
+        )
+        print("=" * 80)
+    # TODO (Haotian): a more elegant implementation here.
     # We need to update these global variables before models use them.
     from tinychat.models import FalconForCausalLM, LlamaForCausalLM, MPTForCausalLM
 
@@ -153,7 +167,6 @@ if __name__ == "__main__":
         )
     modeling_utils._init_weights = False
     torch.set_default_dtype(torch.half)
-    model = AutoModelForCausalLM.from_config(config, trust_remote_code=True)
 
     model_type_dict = {
         "llama": LlamaForCausalLM,
@@ -168,9 +181,7 @@ if __name__ == "__main__":
                 model, args.load_quant, 4, args.q_group_size, args.device
             )
         else:
-            model = (
-                model_type_dict[args.model_type.lower()](config).half()
-            )
+            model = model_type_dict[args.model_type.lower()](config).half()
             model = load_awq_model(
                 model, args.load_quant, 4, args.q_group_size, args.device
             )
@@ -195,11 +206,15 @@ if __name__ == "__main__":
     # Optimize AWQ quantized model
     if args.precision == "W4A16" and args.model_type.lower() == "llama":
         from tinychat.modules import make_quant_norm, make_quant_attn, make_fused_mlp
-
         make_quant_attn(model, args.device)
         make_quant_norm(model)
         make_fused_mlp(model)
-    model_prompter = get_prompter(args.model_type, args.model_path)
+
+    if args.max_seq_len <= 1024:
+        short_prompt = True
+    else:
+        short_prompt = False
+    model_prompter = get_prompter(args.model_type, args.model_path, short_prompt)
     stop_token_ids = get_stop_token_ids(args.model_type, args.model_path)
     count = 0
     while True:
@@ -218,5 +233,6 @@ if __name__ == "__main__":
             stop_token_ids=stop_token_ids,
         )
         outputs = stream_output(output_stream)
-        model_prompter.update_template(outputs)
+        if args.single_round is not True and args.max_seq_len > 512:      # Only memorize previous conversations when kv_cache_size > 512    
+            model_prompter.update_template(outputs)
         count += 1

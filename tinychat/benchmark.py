@@ -39,13 +39,10 @@ def main():
         "--max_seq_len",
         type=int,
         default=2048,
-        help="maximum sequence length for kv cache"
+        help="maximum sequence length for kv cache",
     )
     parser.add_argument(
-        "--max_batch_size",
-        type=int,
-        default=1,
-        help="maximum batch size for kv cache"
+        "--max_batch_size", type=int, default=1, help="maximum batch size for kv cache"
     )
     args = parser.parse_args()
 
@@ -79,7 +76,10 @@ def main():
     ], "We only support llama & falcon & mpt now"
     model = model_type_dict[args.model_type.lower()](config).half()
     real_quantize_model_weight(
-        model, w_bit=4, q_config=dict(q_group_size=args.q_group_size, zero_point=True), init_only=True
+        model,
+        w_bit=4,
+        q_config=dict(q_group_size=args.q_group_size, zero_point=True),
+        init_only=True,
     )
     model = model.to(device)
 
