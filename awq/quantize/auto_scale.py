@@ -1,6 +1,8 @@
 import gc
 import torch
 import torch.nn as nn
+from mango import scheduler, Tuner
+from scipy.stats import uniform
 
 from transformers.models.bloom.modeling_bloom import BloomBlock, BloomGelu
 from transformers.models.opt.modeling_opt import OPTDecoderLayer
@@ -105,7 +107,7 @@ def auto_scale_block(module, module_kwargs,
         module_kwargs.pop("use_cache")
 
     # find the best scale ratio
-    def _search_module_scale(block, linears2scale: list, x, kwargs={}):
+    def _search_module_scale(block, linears2scale: list, x, kwargs={},optimization_method='BO'):
         # w: co, ci
         # x: n, ci
         weight = torch.cat([_m.weight for _m in linears2scale], dim=0)
@@ -115,6 +117,8 @@ def auto_scale_block(module, module_kwargs,
         del weight
         gc.collect()
         torch.cuda.empty_cache()
+
+        optimize_func = {'grid_search':grid_search,'BO':Bayesian_optimization}[optimization_method]
 
         x = x.to(next(block.parameters()).device)
         with torch.no_grad():
@@ -130,8 +134,18 @@ def auto_scale_block(module, module_kwargs,
 
         n_grid = 20
         history = []
-
         org_sd = {k: v.cpu() for k, v in block.state_dict().items()}
+        best_ratio, best_scales = optimize_func(block, linears2scale, x, kwargs, w_max, org_out, x_max, best_error, n_grid, history, org_sd)
+        if best_ratio == -1:
+            print(history)
+            raise Exception
+        # print(best_ratio)
+        best_scales = best_scales.view(-1)
+
+        assert torch.isnan(best_scales).sum() == 0, best_scales
+        return best_scales.detach()
+
+    def grid_search(block, linears2scale, x, kwargs, w_max, org_out, x_max, best_error, n_grid, history, org_sd):
         for ratio in range(n_grid):
             ratio = ratio * 1 / n_grid
             scales = (x_max.pow(ratio) / w_max.pow(1-ratio)
@@ -153,14 +167,38 @@ def auto_scale_block(module, module_kwargs,
                 best_ratio = ratio
                 best_scales = scales
             block.load_state_dict(org_sd)
-        if best_ratio == -1:
-            print(history)
-            raise Exception
-        # print(best_ratio)
-        best_scales = best_scales.view(-1)
+        return best_ratio,best_scales
 
-        assert torch.isnan(best_scales).sum() == 0, best_scales
-        return best_scales.detach()
+    def Bayesian_optimization(block, linears2scale, x, kwargs, w_max, org_out, x_max, best_error, n_grid, history, org_sd):
+        @scheduler.serial
+        def get_loss(ratio):
+            ratio = ratio * 1 / n_grid
+            scales = (x_max.pow(ratio) / w_max.pow(1-ratio)
+                      ).clamp(min=1e-4).view(-1)
+            scales = scales / (scales.max() * scales.min()).sqrt()
+            for fc in linears2scale:
+                fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
+                fc.weight.data = w_quantize_func(
+                    fc.weight.data) / (scales.view(1, -1))
+            out = block(x, **kwargs)
+            if isinstance(out, tuple):
+                out = out[0]
+
+            loss = (org_out - out).float().pow(2).mean().item()  # float prevents overflow
+            history.append(loss)
+            is_best = loss < best_error
+            if is_best:
+                best_error = loss
+                best_ratio = ratio
+                best_scales = scales
+            block.load_state_dict(org_sd)
+            return loss
+
+        param_space = dict(ratio=uniform(0, 1))
+        tuner = Tuner(param_space, objective)
+        result = tuner.minimize()
+        return best_ratio,best_scales
+
 
     def _auto_get_scale(prev_op, layers, inp, module2inspect=None, kwargs={}):
         # module2inspect: if given, we will check the output diff of this module instead of layers
