@@ -100,7 +100,7 @@ We provide several sample script to run AWQ (please refer to `./scripts`). We us
 
 1. Perform AWQ search and save search results (we already did it for you):
 ```bash
-python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
+python -m awq.entry --model_path /mnt/workspace/zhangdi/vicuna-7b-v1.3 \
     --w_bit 4 --q_group_size 128 \
     --run_awq --dump_awq awq_cache/opt-6.7b-w4-g128.pt
 ```

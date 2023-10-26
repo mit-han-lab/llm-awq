@@ -167,11 +167,15 @@ def auto_scale_block(module, module_kwargs,
                 best_ratio = ratio
                 best_scales = scales
             block.load_state_dict(org_sd)
+        print(best_error)
         return best_ratio,best_scales
 
     def Bayesian_optimization(block, linears2scale, x, kwargs, w_max, org_out, x_max, best_error, n_grid, history, org_sd):
+        best_ratio = -1
+        best_scales = None
         @scheduler.serial
         def get_loss(ratio):
+            nonlocal best_error,best_ratio,best_scales
             ratio = ratio * 1 / n_grid
             scales = (x_max.pow(ratio) / w_max.pow(1-ratio)
                       ).clamp(min=1e-4).view(-1)
@@ -195,7 +199,7 @@ def auto_scale_block(module, module_kwargs,
             return loss
 
         param_space = dict(ratio=uniform(0, 1))
-        tuner = Tuner(param_space, objective)
+        tuner = Tuner(param_space, get_loss,{"num_iteration":15,'exploration':0.5,'exploration_decay':1})
         result = tuner.minimize()
         return best_ratio,best_scales
 
