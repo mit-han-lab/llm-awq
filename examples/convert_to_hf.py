@@ -30,8 +30,8 @@ quantized_model_hub_path = args.quantized_model_hub_path
 
 # Load the corresponding AWQConfig
 quantization_config = AwqConfig(
-    w_bit=args.w_bit,
-    q_group_size=args.q_group_size,
+    bits=args.w_bit,
+    group_size=args.q_group_size,
     zero_point=not args.no_zero_point,
     backend="llm-awq",
     version="GEMV",
