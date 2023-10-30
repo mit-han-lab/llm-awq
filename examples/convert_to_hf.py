@@ -34,7 +34,7 @@ quantization_config = AwqConfig(
     group_size=args.q_group_size,
     zero_point=not args.no_zero_point,
     backend="llm-awq",
-    version="GEMV",
+    version="gemv",
 )
 
 # Set the attribute `quantization_config` in model's config
