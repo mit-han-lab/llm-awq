@@ -9,7 +9,7 @@ import argparse
 # This demo only support single GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-from transformers import AutoConfig, AWQConfig, AutoTokenizer
+from transformers import AutoConfig, AwqConfig, AutoTokenizer
 from huggingface_hub import HfApi
 
 api = HfApi()
@@ -29,7 +29,7 @@ quantized_model_path = args.quantized_model_path
 quantized_model_hub_path = args.quantized_model_hub_path
 
 # Load the corresponding AWQConfig
-quantization_config = AWQConfig(
+quantization_config = AwqConfig(
     w_bit=args.w_bit,
     q_group_size=args.q_group_size,
     zero_point=not args.no_zero_point,
