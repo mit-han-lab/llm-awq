@@ -42,6 +42,24 @@ def scale_activations(module):
             torch.ones(c, dtype=dtype, device=device)
         )
         set_op_by_name(module, "mlp.act", act)
+    elif 'bigcode' in str(module.__class__).lower():
+        if isinstance(module.mlp.act, ScaledActivation):
+            return
+        c = module.mlp.c_proj.out_features
+        act = ScaledActivation(
+            module.mlp.act, 
+            torch.ones(c, dtype=dtype, device=device)
+        )
+        set_op_by_name(module, "mlp.act", act)
+    elif 'neox' in str(module.__class__).lower():
+        if isinstance(module.mlp.act, ScaledActivation):
+            return
+        c = module.mlp.dense_h_to_4h.out_features
+        act = ScaledActivation(
+            module.mlp.act, 
+            torch.ones(c, dtype=dtype, device=device)
+        )
+        set_op_by_name(module, "mlp.act", act)
     
 
 # core quantization method (simulated quantization)

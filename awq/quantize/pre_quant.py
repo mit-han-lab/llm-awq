@@ -30,6 +30,10 @@ def get_blocks(model):
         layers = model.transformer.blocks
     elif "falcon" in str(model.__class__).lower():
         layers = model.transformer.h
+    elif "bigcode" in str(model.__class__).lower():
+        layers = model.transformer.h
+    elif "neox" in str(model.__class__).lower():
+        layers = model.gpt_neox.layers
     else:
         raise NotImplementedError(type(model))
     return layers
@@ -48,6 +52,14 @@ def move_embed(model, device):
         model.transformer.emb_drop = model.transformer.emb_drop.to(device)
     elif "falcon" in str(model.__class__).lower():
         model.transformer.word_embeddings = model.transformer.word_embeddings.to(device)
+    elif "bigcode" in str(model.__class__).lower():
+        model.transformer.wte = model.transformer.wte.to(device)
+        model.transformer.wpe = model.transformer.wpe.to(device)
+        model.transformer.drop = model.transformer.drop.to(device)
+    elif "neox" in str(model.__class__).lower():
+        model.gpt_neox.embed_in = model.gpt_neox.embed_in.to(device)
+        model.gpt_neox.emb_dropout = model.gpt_neox.emb_dropout.to(device)
+        model.embed_out = model.embed_out.to(device)
     else:
         raise NotImplementedError(type(model))
 
@@ -63,7 +75,9 @@ def run_awq(
     from ..utils.calib_data import get_calib_dataset
     from ..utils.module import append_str_prefix, get_op_name
 
-
+    if "bigcode" in str(model.__class__).lower():
+        # otherwise attention_mask will always be on cpu.
+        model.transformer.bias = model.transformer.bias.to("cuda")
     layers = get_blocks(model)
 
     samples = get_calib_dataset(
