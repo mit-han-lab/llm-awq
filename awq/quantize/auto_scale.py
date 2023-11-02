@@ -5,6 +5,7 @@ import torch.nn as nn
 from transformers.models.bloom.modeling_bloom import BloomBlock, BloomGelu
 from transformers.models.opt.modeling_opt import OPTDecoderLayer
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm
+from transformers.activations import GELUActivation
 
 from .qmodule import ScaledActivation
 from ..utils.module import get_op_by_name, get_op_name, set_op_by_name
@@ -34,13 +35,6 @@ def scale_ln_fcs(ln, fcs, scales):
         fcs = [fcs]
     
     scales = scales.to(ln.weight.device)
-
-    # debugging start even scales = 1 does not work?
-    """
-    scales = scales * 0
-    scales = scales + 1
-    """
-    # debugging end
 
     ln.weight.div_(scales)
     if hasattr(ln, 'bias') and ln.bias is not None:
@@ -79,7 +73,7 @@ def scale_fc_fc(fc1, fc2, scales):
 
 @torch.no_grad()
 def scale_gelu_fc(gelu, fc, scales):
-    assert isinstance(gelu, nn.GELU) or isinstance(gelu, BloomGelu)
+    assert isinstance(gelu, (nn.GELU, BloomGelu, GELUActivation))
     assert isinstance(fc, nn.Linear)
 
     fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
@@ -108,14 +102,6 @@ def auto_scale_block(module, module_kwargs,
     def _search_module_scale(block, linears2scale: list, x, kwargs={}):
         # w: co, ci
         # x: n, ci
-        weight = torch.cat([_m.weight for _m in linears2scale], dim=0)
-        w_max = get_weight_scale(
-            weight, q_group_size=q_config.get("q_group_size", -1))
-        # Clear GPU memory
-        del weight
-        gc.collect()
-        torch.cuda.empty_cache()
-
         x = x.to(next(block.parameters()).device)
         with torch.no_grad():
             org_out = block(x, **kwargs)
@@ -134,8 +120,7 @@ def auto_scale_block(module, module_kwargs,
         org_sd = {k: v.cpu() for k, v in block.state_dict().items()}
         for ratio in range(n_grid):
             ratio = ratio * 1 / n_grid
-            scales = (x_max.pow(ratio) / w_max.pow(1-ratio)
-                      ).clamp(min=1e-4).view(-1)
+            scales = x_max.pow(ratio).clamp(min=1e-4).view(-1)
             scales = scales / (scales.max() * scales.min()).sqrt()
             for fc in linears2scale:
                 fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
@@ -336,7 +321,48 @@ def auto_scale_block(module, module_kwargs,
             layers=[module.mlp.dense_4h_to_h],
             inp=input_feat['mlp.dense_4h_to_h'],
         ))
-    
+    elif "bigcode" in str(module.__class__).lower():         
+        scales_list.append(_auto_get_scale(
+            prev_op=module.ln_1,
+            layers=[module.attn.c_attn],
+            inp=input_feat['attn.c_attn'],
+            module2inspect=module.attn, 
+            kwargs=module_kwargs,
+        ))
+        # fc1
+        scales_list.append(_auto_get_scale(
+            prev_op=module.ln_2,
+            layers=[module.mlp.c_fc],
+            inp=input_feat['mlp.c_fc'],
+            module2inspect=module.mlp,
+        ))
+        # fc2
+        scales_list.append(_auto_get_scale(
+            prev_op=module.mlp.act,
+            layers=[module.mlp.c_proj],
+            inp=input_feat['mlp.c_proj'],
+        ))
+    elif "neox" in str(module.__class__).lower():         
+        scales_list.append(_auto_get_scale(
+            prev_op=module.input_layernorm,
+            layers=[module.attention.query_key_value],
+            inp=input_feat['attention.query_key_value'],
+            module2inspect=module.attention, 
+            kwargs=module_kwargs,
+        ))
+        # fc1
+        scales_list.append(_auto_get_scale(
+            prev_op=module.post_attention_layernorm,
+            layers=[module.mlp.dense_h_to_4h],
+            inp=input_feat['mlp.dense_h_to_4h'],
+            module2inspect=module.mlp,
+        ))
+        # fc2
+        scales_list.append(_auto_get_scale(
+            prev_op=module.mlp.act,
+            layers=[module.mlp.dense_4h_to_h],
+            inp=input_feat['mlp.dense_4h_to_h'],
+        ))
     else:
         raise NotImplementedError(f"{type(module)} not supported yet!")
 
@@ -357,7 +383,7 @@ def apply_scale(module, scales_list, input_feat_dict=None):
             scale_fc_fc(prev_op, layers[0], scales)
         elif isinstance(prev_op, (nn.LayerNorm, LlamaRMSNorm)):
             scale_ln_fcs(prev_op, layers, scales)
-        elif isinstance(prev_op, nn.GELU) or isinstance(prev_op, BloomGelu):
+        elif isinstance(prev_op, (nn.GELU, BloomGelu, GELUActivation)):
             new_module = ScaledActivation(prev_op, scales)
             set_op_by_name(module, prev_op_name, new_module)
             scale_gelu_fc(prev_op, layers[0], scales)
