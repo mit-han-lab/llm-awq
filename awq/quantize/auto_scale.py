@@ -73,7 +73,7 @@ def scale_fc_fc(fc1, fc2, scales):
 
 @torch.no_grad()
 def scale_gelu_fc(gelu, fc, scales):
-    assert isinstance(gelu, (nn.GeLU, BloomGelu, GELUActivation))
+    assert isinstance(gelu, (nn.GELU, BloomGelu, GELUActivation))
     assert isinstance(fc, nn.Linear)
 
     fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
@@ -383,7 +383,7 @@ def apply_scale(module, scales_list, input_feat_dict=None):
             scale_fc_fc(prev_op, layers[0], scales)
         elif isinstance(prev_op, (nn.LayerNorm, LlamaRMSNorm)):
             scale_ln_fcs(prev_op, layers, scales)
-        elif isinstance(prev_op, (nn.GeLU, BloomGelu, GELUActivation)):
+        elif isinstance(prev_op, (nn.GELU, BloomGelu, GELUActivation)):
             new_module = ScaledActivation(prev_op, scales)
             set_op_by_name(module, prev_op_name, new_module)
             scale_gelu_fc(prev_op, layers[0], scales)
