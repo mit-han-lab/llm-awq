@@ -74,6 +74,8 @@ def StreamGenerator(
             "llama" not in model.__class__.__name__.lower()
             and "mpt" not in model.__class__.__name__.lower()
             and "falcon" not in model.__class__.__name__.lower()
+            and "bigcode" not in model.__class__.__name__.lower()
+            and "neox" not in model.__class__.__name__.lower()
         ):
             if i == 0:  # Context Stage
                 out = model(inputs, use_cache=True)

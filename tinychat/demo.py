@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, modeling_utils
 from attributedict.collections import AttributeDict
-from tinychat.stream_generators import StreamGenerator, FalconStreamGenerator
+from tinychat.stream_generators import StreamGenerator
 import tinychat.utils.constants
 from tinychat.utils.load_quant import load_awq_model, load_awq_llama_fast
 from tinychat.utils.prompt_templates import get_prompter, get_stop_token_ids
@@ -129,7 +129,11 @@ if __name__ == "__main__":
         "llama",
         "falcon",
         "mpt",
-    ], "We only support llama & falcon & mpt now"
+        "mistral",
+        "starcoder",
+        "stablelm",
+        "gptneox"
+    ], "We only support llama & falcon & mpt & mistral & starcoder & stablelm now"
     assert args.precision in ["W4A16", "W16A16"], "We only support W4A16/W16A16 now"
 
     gen_params.n_predict = 512
@@ -145,7 +149,7 @@ if __name__ == "__main__":
         print("=" * 80)
     # TODO (Haotian): a more elegant implementation here.
     # We need to update these global variables before models use them.
-    from tinychat.models import FalconForCausalLM, LlamaForCausalLM, MPTForCausalLM
+    from tinychat.models import FalconForCausalLM, LlamaForCausalLM, MPTForCausalLM, GPTBigCodeForCausalLM, GPTNeoXForCausalLM
 
     def skip(*args, **kwargs):
         pass
@@ -161,6 +165,10 @@ if __name__ == "__main__":
         tokenizer = AutoTokenizer.from_pretrained(
             config.tokenizer_name, trust_remote_code=True
         )
+    elif "neox" in config.__class__.__name__.lower() or "stable" in config.__class__.__name__.lower():
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model_path, use_fast=True, trust_remote_code=True
+        )
     else:
         tokenizer = AutoTokenizer.from_pretrained(
             args.model_path, use_fast=False, trust_remote_code=True
@@ -172,19 +180,34 @@ if __name__ == "__main__":
         "llama": LlamaForCausalLM,
         "falcon": FalconForCausalLM,
         "mpt": MPTForCausalLM,
+        "mistral": LlamaForCausalLM,
+        "starcoder": GPTBigCodeForCausalLM,
+        "gptneox": GPTNeoXForCausalLM,
+        "stablelm": LlamaForCausalLM
     }
 
     if args.precision == "W4A16":
-        if args.model_type.lower() == "llama":
+        if args.model_type.lower() == "llama" or args.model_type.lower() == "mistral" or args.model_type.lower() == "stablelm":
             model = model_type_dict["llama"](config).half()
             model = load_awq_llama_fast(
                 model, args.load_quant, 4, args.q_group_size, args.device
             )
         else:
+            # elif args.model_type.lower() != "starcoder":
             model = model_type_dict[args.model_type.lower()](config).half()
             model = load_awq_model(
                 model, args.load_quant, 4, args.q_group_size, args.device
             )
+            #else:
+            #    model = AutoModelForCausalLM.from_pretrained(
+            #        args.model_path,
+            #        config=config,
+            #        torch_dtype=torch.float16,
+            #        trust_remote_code=True,
+            #    )
+            #    model = load_awq_model(
+            #        model, args.load_quant, 4, args.q_group_size, args.device
+            #    )
     else:
         loaded_model = AutoModelForCausalLM.from_pretrained(
             args.model_path,
@@ -194,6 +217,7 @@ if __name__ == "__main__":
         )
         model = model_type_dict[args.model_type.lower()](config).half().to(args.device)
         model.load_state_dict(loaded_model.state_dict())
+    
 
     # device warm up
     device_warmup(args.device)
@@ -204,8 +228,9 @@ if __name__ == "__main__":
     stream_generator = StreamGenerator
 
     # Optimize AWQ quantized model
-    if args.precision == "W4A16" and args.model_type.lower() == "llama":
+    if args.precision == "W4A16" and args.model_type.lower() in ["llama", "mistral", "stablelm"]:
         from tinychat.modules import make_quant_norm, make_quant_attn, make_fused_mlp
+
         make_quant_attn(model, args.device)
         make_quant_norm(model)
         make_fused_mlp(model)
@@ -233,6 +258,8 @@ if __name__ == "__main__":
             stop_token_ids=stop_token_ids,
         )
         outputs = stream_output(output_stream)
-        if args.single_round is not True and args.max_seq_len > 512:      # Only memorize previous conversations when kv_cache_size > 512    
+        if (
+            args.single_round is not True and args.max_seq_len > 512
+        ):  # Only memorize previous conversations when kv_cache_size > 512
             model_prompter.update_template(outputs)
         count += 1

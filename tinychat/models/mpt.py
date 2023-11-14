@@ -1,5 +1,14 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# This software may be used and distributed according to the terms of the GNU General Public License version 3.
+"""
+@online{MosaicML2023Introducing,
+    author    = {MosaicML NLP Team},
+    title     = {Introducing MPT-7B: A New Standard for Open-Source,
+    Commercially Usable LLMs},
+    year      = {2023},
+    url       = {www.mosaicml.com/blog/mpt-7b},
+    note      = {Accessed: 2023-05-05},
+    urldate   = {2023-05-05}
+}
+"""
 
 from typing import Optional, Tuple
 from dataclasses import dataclass

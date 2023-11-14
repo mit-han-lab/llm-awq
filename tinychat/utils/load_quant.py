@@ -67,18 +67,18 @@ def load_awq_model(model, checkpoint, w_bit, group_size, device):
     else:
         pbar = tqdm(range(1))
         pbar.set_description("Loading checkpoint")
-        for i in pbar:
-            model = load_checkpoint_and_dispatch(
-                model,
-                checkpoint,
-                no_split_module_classes=[
-                    "OPTDecoderLayer",
-                    "LlamaDecoderLayer",
-                    "BloomBlock",
-                    "MPTBlock",
-                    "DecoderLayer",
-                ],
-            ).to(device)
+        
+        if checkpoint.endswith("safetensors"):
+            from safetensors import safe_open
+            state_dict = {}
+            with safe_open(checkpoint, framework="pt", device="cpu") as f:
+                for key in f.keys():
+                    state_dict[key] = f.get_tensor(key)
+            model.load_state_dict(state_dict)
+            model = model.to(device)
+        else:
+            model.load_state_dict(torch.load(checkpoint))
+            model = model.to(device)
     return model
 
 

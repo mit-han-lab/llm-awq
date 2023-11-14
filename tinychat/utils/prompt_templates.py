@@ -10,6 +10,7 @@ class BasePrompter:
         sen_spliter="\n",
         qa_spliter="\n",
         decorator: List[str] = None,
+        colon=":",
     ):
         self.system_inst = system_inst  # System Instruction
         self.role1 = role1  # The name of USER
@@ -17,6 +18,7 @@ class BasePrompter:
         self.sen_spliter = sen_spliter  # How to split system/user/assistant outputs
         self.qa_spliter = qa_spliter  # How to split Q&A rounds
         self.decorator = decorator
+        self.colon = colon
         if self.decorator == None:
             self.starter = ""
             self.stopper = ""
@@ -27,12 +29,13 @@ class BasePrompter:
             self.template = (
                 self.starter
                 + self.role1
-                + ": {prompt}"
+                + self.colon 
+                + " {prompt}"
                 + self.stopper
                 + self.sen_spliter
                 + self.starter
                 + self.role2
-                + ":"
+                + self.colon
             )
         else:
             self.template = (
@@ -42,12 +45,13 @@ class BasePrompter:
                 + self.sen_spliter
                 + self.starter
                 + self.role1
-                + ": {prompt}"
+                + self.colon
+                + " {prompt}"
                 + self.stopper
                 + self.sen_spliter
                 + self.starter
                 + self.role2
-                + ":"
+                + self.colon
             )
         self.model_input = None
 
@@ -55,6 +59,11 @@ class BasePrompter:
         self.model_input = self.template.format(prompt=input_prompt)
 
     def update_template(self, outputs):
+        # Special processing for code.
+        self.model_input = self.model_input.replace("{", "{{")
+        self.model_input = self.model_input.replace("}", "}}")
+        outputs = outputs.replace("{", "{{")
+        outputs = outputs.replace("}", "}}")
         self.template = (
             self.model_input
             + " "
@@ -63,12 +72,13 @@ class BasePrompter:
             + self.qa_spliter
             + self.starter
             + self.role1
-            + ": {prompt}"
+            + self.colon
+            + " {prompt}"
             + self.stopper
             + self.sen_spliter
             + self.starter
             + self.role2
-            + ":"
+            + self.colon
         )
         self.model_input = None
 
@@ -101,6 +111,15 @@ class VicunaPrompter(BasePrompter):
         qa_spliter = "</s>"
         super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter)
 
+
+class CodeLlamaPrompter(BasePrompter):
+    def __init__(self):
+        system_inst = ""
+        role1 = "<s>[INST] "
+        role2 = ""
+        sen_spliter = " [/INST]"
+        qa_spliter = " </s>"
+        super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, colon="")
 
 class Llama2Prompter(OneShotBasePrompter):
     def __init__(self, short_prompt=False):
@@ -144,6 +163,16 @@ class FalconSimplePrompter(BasePrompter):
         sen_spliter = "\n\n"
         qa_spliter = "\n\n"
         super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter)
+
+
+class StarCoderPrompter(BasePrompter):
+    def __init__(self):
+        system_inst = None
+        role1 = ""
+        role2 = ""
+        sen_spliter = "\n\n"
+        qa_spliter = "\n\n"
+        super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, colon="")
 
 
 class FalconPrompter(BasePrompter):
@@ -191,14 +220,18 @@ class MPTChatPrompter(BasePrompter):
 
 
 def get_prompter(model_type, model_path="", short_prompt=False):
-    if model_type.lower() == "llama":
+    if model_type.lower() in ["llama", "mistral", "stablelm", "gptneox"]:
         if "vicuna" in model_path:
             return VicunaPrompter()
+        elif "codellama" in model_path:
+            return CodeLlamaPrompter()
         else:
             return Llama2Prompter(short_prompt)
     elif model_type.lower() == "falcon":
         # return FalconPrompter()
         return FalconSimplePrompter()
+    elif model_type.lower() == "starcoder":
+        return StarCoderPrompter()
     elif model_type.lower() == "mpt":
         if "mpt" and "chat" in model_path:
             return MPTChatPrompter()
@@ -209,7 +242,7 @@ def get_prompter(model_type, model_path="", short_prompt=False):
 
 
 def get_stop_token_ids(model_type, model_path=""):
-    if model_type.lower() == "llama":
+    if model_type.lower() in ["llama", "mistral", "starcoder", "stablelm", "gptneox"]:
         return []
     elif model_type.lower() == "falcon":
         return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
