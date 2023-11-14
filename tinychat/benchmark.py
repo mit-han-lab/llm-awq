@@ -48,7 +48,13 @@ def main():
 
     tinychat.utils.constants.max_batch_size = args.max_batch_size
     tinychat.utils.constants.max_seq_len = args.max_seq_len
-    from tinychat.models import FalconForCausalLM, LlamaForCausalLM, MPTForCausalLM, GPTBigCodeForCausalLM, GPTNeoXForCausalLM
+    from tinychat.models import (
+        FalconForCausalLM,
+        LlamaForCausalLM,
+        MPTForCausalLM,
+        GPTBigCodeForCausalLM,
+        GPTNeoXForCausalLM,
+    )
 
     modeling_utils._init_weights = False
     torch.nn.init.kaiming_uniform_ = skip
@@ -69,7 +75,7 @@ def main():
         "mistral": LlamaForCausalLM,
         "starcoder": GPTBigCodeForCausalLM,
         "gptneox": GPTNeoXForCausalLM,
-        "stablelm": LlamaForCausalLM
+        "stablelm": LlamaForCausalLM,
     }
 
     config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
@@ -80,7 +86,7 @@ def main():
         "mistral",
         "starcoder",
         "stablelm",
-        "gptneox"
+        "gptneox",
     ], "We only support llama & falcon & mpt & mistral & starcoder & stablelm now"
     model = model_type_dict[args.model_type.lower()](config).half()
     real_quantize_model_weight(

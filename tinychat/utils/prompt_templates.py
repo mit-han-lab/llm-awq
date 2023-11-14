@@ -29,7 +29,7 @@ class BasePrompter:
             self.template = (
                 self.starter
                 + self.role1
-                + self.colon 
+                + self.colon
                 + " {prompt}"
                 + self.stopper
                 + self.sen_spliter
@@ -120,6 +120,7 @@ class CodeLlamaPrompter(BasePrompter):
         sen_spliter = " [/INST]"
         qa_spliter = " </s>"
         super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, colon="")
+
 
 class Llama2Prompter(OneShotBasePrompter):
     def __init__(self, short_prompt=False):

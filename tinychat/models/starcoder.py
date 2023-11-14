@@ -22,7 +22,7 @@ try:
     from flash_attn.flash_attn_interface import flash_attn_varlen_func
     from flash_attn.bert_padding import pad_input
 except ImportError:
-    print ("FlashAttention not found. Install it if you need to train models.")
+    print("FlashAttention not found. Install it if you need to train models.")
 
 import tinychat.utils.constants
 
@@ -30,9 +30,11 @@ max_batch_size = tinychat.utils.constants.max_batch_size
 multiple_of = tinychat.utils.constants.llama_multiple_of
 max_seq_len = tinychat.utils.constants.max_seq_len
 
+
 @functools.cache
 def get_cuseqlen(bsz, seqlen, device="cuda:0"):
     return torch.Tensor([seqlen * i for i in range(bsz + 1)]).int().to(device)
+
 
 class GPTBigCodeAttentionFused(nn.Module):
     def __init__(self, config, layer_idx: int):
@@ -94,7 +96,6 @@ class GPTBigCodeAttentionFused(nn.Module):
             .half()
         )  # added to half
 
-
     def forward(
         self,
         x: torch.Tensor,
@@ -112,13 +113,12 @@ class GPTBigCodeAttentionFused(nn.Module):
         xqkv = xqkv.view(bsz, seqlen, self.num_heads + 2 * self.kv_heads, self.head_dim)
         xq = xqkv[:, :, : -2 * self.kv_heads]
         xk = xqkv[:, :, -2 * self.kv_heads : -self.kv_heads]
-        xv = xqkv[:, :, -self.kv_heads:]
+        xv = xqkv[:, :, -self.kv_heads :]
 
         if seqlen > 1:
             xq = xq.view(bsz, seqlen, self.num_heads, self.head_dim)
             xk = xk.view(bsz, seqlen, self.kv_heads, self.head_dim)
             xv = xv.view(bsz, seqlen, self.kv_heads, self.head_dim)
-
 
             self.cache_k = self.cache_k.to(xq)
             self.cache_v = self.cache_v.to(xq)
@@ -155,12 +155,18 @@ class GPTBigCodeAttentionFused(nn.Module):
             """
             cu_seqlens = get_cuseqlen(bsz, seqlen, keys.device)
             output = flash_attn_varlen_func(
-                q=xq.view(-1, self.num_heads, self.head_dim), k=keys.view(-1, self.num_heads, self.head_dim), v=values.view(-1, self.num_heads, self.head_dim),
-                cu_seqlens_q=cu_seqlens, cu_seqlens_k=cu_seqlens,
-                max_seqlen_q=seqlen, max_seqlen_k=seqlen,
-                dropout_p=0.0, causal=True)
+                q=xq.view(-1, self.num_heads, self.head_dim),
+                k=keys.view(-1, self.num_heads, self.head_dim),
+                v=values.view(-1, self.num_heads, self.head_dim),
+                cu_seqlens_q=cu_seqlens,
+                cu_seqlens_k=cu_seqlens,
+                max_seqlen_q=seqlen,
+                max_seqlen_k=seqlen,
+                dropout_p=0.0,
+                causal=True,
+            )
             output = output.reshape(bsz, seqlen, -1)
-            
+
         else:
             xq = xq.view(bsz, self.num_heads, self.head_dim)
             xk = xk.view(bsz, self.kv_heads, self.head_dim)
@@ -177,7 +183,7 @@ class GPTBigCodeAttentionFused(nn.Module):
                 None,
                 start_pos,
                 # No RoPE
-                0, #self.head_dim,
+                0,  # self.head_dim,
                 10000,
                 True,
             )
@@ -205,7 +211,9 @@ class GPTBigCodeBlock(nn.Module):
     def __init__(self, config, layer_idx: int):
         super().__init__()
         hidden_size = config.hidden_size
-        self.inner_dim = config.n_inner if config.n_inner is not None else 4 * hidden_size
+        self.inner_dim = (
+            config.n_inner if config.n_inner is not None else 4 * hidden_size
+        )
 
         self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
         self.attn = GPTBigCodeAttentionFused(config, layer_idx=layer_idx)
@@ -219,9 +227,7 @@ class GPTBigCodeBlock(nn.Module):
         start_pos: int,
         mask: Optional[torch.Tensor],
     ):
-        h = x + self.attn.forward(
-            self.ln_1(x), start_pos, mask
-        )
+        h = x + self.attn.forward(self.ln_1(x), start_pos, mask)
         out = h + self.mlp.forward(self.ln_2(h))
         return out
 
@@ -235,14 +241,20 @@ class GPTBigCodeModel(nn.Module):
         self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
         self.wpe = nn.Embedding(config.max_position_embeddings, self.embed_dim)
 
-        self.h = nn.ModuleList([GPTBigCodeBlock(config, layer_idx=i) for i in range(config.num_hidden_layers)])
+        self.h = nn.ModuleList(
+            [
+                GPTBigCodeBlock(config, layer_idx=i)
+                for i in range(config.num_hidden_layers)
+            ]
+        )
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
         max_positions = config.max_position_embeddings
         self.register_buffer(
-            "bias", torch.tril(torch.ones((max_positions, max_positions), dtype=torch.bool)), persistent=False
+            "bias",
+            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.bool)),
+            persistent=False,
         )
-
 
     @torch.inference_mode()
     def forward(self, tokens: torch.Tensor, start_pos: int):

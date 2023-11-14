@@ -67,9 +67,10 @@ def load_awq_model(model, checkpoint, w_bit, group_size, device):
     else:
         pbar = tqdm(range(1))
         pbar.set_description("Loading checkpoint")
-        
+
         if checkpoint.endswith("safetensors"):
             from safetensors import safe_open
+
             state_dict = {}
             with safe_open(checkpoint, framework="pt", device="cpu") as f:
                 for key in f.keys():

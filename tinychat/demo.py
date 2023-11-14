@@ -132,7 +132,7 @@ if __name__ == "__main__":
         "mistral",
         "starcoder",
         "stablelm",
-        "gptneox"
+        "gptneox",
     ], "We only support llama & falcon & mpt & mistral & starcoder & stablelm now"
     assert args.precision in ["W4A16", "W16A16"], "We only support W4A16/W16A16 now"
 
@@ -149,7 +149,13 @@ if __name__ == "__main__":
         print("=" * 80)
     # TODO (Haotian): a more elegant implementation here.
     # We need to update these global variables before models use them.
-    from tinychat.models import FalconForCausalLM, LlamaForCausalLM, MPTForCausalLM, GPTBigCodeForCausalLM, GPTNeoXForCausalLM
+    from tinychat.models import (
+        FalconForCausalLM,
+        LlamaForCausalLM,
+        MPTForCausalLM,
+        GPTBigCodeForCausalLM,
+        GPTNeoXForCausalLM,
+    )
 
     def skip(*args, **kwargs):
         pass
@@ -165,7 +171,10 @@ if __name__ == "__main__":
         tokenizer = AutoTokenizer.from_pretrained(
             config.tokenizer_name, trust_remote_code=True
         )
-    elif "neox" in config.__class__.__name__.lower() or "stable" in config.__class__.__name__.lower():
+    elif (
+        "neox" in config.__class__.__name__.lower()
+        or "stable" in config.__class__.__name__.lower()
+    ):
         tokenizer = AutoTokenizer.from_pretrained(
             args.model_path, use_fast=True, trust_remote_code=True
         )
@@ -183,11 +192,15 @@ if __name__ == "__main__":
         "mistral": LlamaForCausalLM,
         "starcoder": GPTBigCodeForCausalLM,
         "gptneox": GPTNeoXForCausalLM,
-        "stablelm": LlamaForCausalLM
+        "stablelm": LlamaForCausalLM,
     }
 
     if args.precision == "W4A16":
-        if args.model_type.lower() == "llama" or args.model_type.lower() == "mistral" or args.model_type.lower() == "stablelm":
+        if (
+            args.model_type.lower() == "llama"
+            or args.model_type.lower() == "mistral"
+            or args.model_type.lower() == "stablelm"
+        ):
             model = model_type_dict["llama"](config).half()
             model = load_awq_llama_fast(
                 model, args.load_quant, 4, args.q_group_size, args.device
@@ -198,7 +211,7 @@ if __name__ == "__main__":
             model = load_awq_model(
                 model, args.load_quant, 4, args.q_group_size, args.device
             )
-            #else:
+            # else:
             #    model = AutoModelForCausalLM.from_pretrained(
             #        args.model_path,
             #        config=config,
@@ -217,7 +230,6 @@ if __name__ == "__main__":
         )
         model = model_type_dict[args.model_type.lower()](config).half().to(args.device)
         model.load_state_dict(loaded_model.state_dict())
-    
 
     # device warm up
     device_warmup(args.device)
@@ -228,7 +240,11 @@ if __name__ == "__main__":
     stream_generator = StreamGenerator
 
     # Optimize AWQ quantized model
-    if args.precision == "W4A16" and args.model_type.lower() in ["llama", "mistral", "stablelm"]:
+    if args.precision == "W4A16" and args.model_type.lower() in [
+        "llama",
+        "mistral",
+        "stablelm",
+    ]:
         from tinychat.modules import make_quant_norm, make_quant_attn, make_fused_mlp
 
         make_quant_attn(model, args.device)

@@ -262,10 +262,14 @@ class TransformerBlock(nn.Module):
         self.layer_id = layer_id
         if hasattr(args, "rms_norm_eps"):
             self.input_layernorm = RMSNorm(args.hidden_size, eps=args.rms_norm_eps)
-            self.post_attention_layernorm = RMSNorm(args.hidden_size, eps=args.rms_norm_eps)
+            self.post_attention_layernorm = RMSNorm(
+                args.hidden_size, eps=args.rms_norm_eps
+            )
         else:
             self.input_layernorm = nn.LayerNorm(args.hidden_size, eps=args.norm_eps)
-            self.post_attention_layernorm = nn.LayerNorm(args.hidden_size, eps=args.norm_eps)
+            self.post_attention_layernorm = nn.LayerNorm(
+                args.hidden_size, eps=args.norm_eps
+            )
 
     def forward(
         self,
@@ -306,7 +310,7 @@ class Transformer(nn.Module):
         self.freqs_cis = precompute_freqs_cis(
             self.params.hidden_size // self.params.num_attention_heads,
             self.params.max_position_embeddings * 2,
-            theta = self.rope_theta
+            theta=self.rope_theta,
         )
 
     @torch.inference_mode()

@@ -29,6 +29,7 @@ max_batch_size = tinychat.utils.constants.max_batch_size
 multiple_of = tinychat.utils.constants.llama_multiple_of
 max_seq_len = tinychat.utils.constants.max_seq_len
 
+
 def apply_rotary_emb(
     xq: torch.Tensor,
     xk: torch.Tensor,
@@ -114,7 +115,9 @@ class GPTNeoXAttentionFused(nn.Module):
 
         # dummy
         self.rotary_emb = GPTNeoXRotaryEmbedding(
-            self.rotary_ndim, max_position_embeddings=args.max_position_embeddings, device="cuda:0"
+            self.rotary_ndim,
+            max_position_embeddings=args.max_position_embeddings,
+            device="cuda:0",
         )
 
     def forward(
@@ -146,10 +149,10 @@ class GPTNeoXAttentionFused(nn.Module):
             xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
             xk = xk.view(bsz, seqlen, self.n_local_heads, self.head_dim)
             xv = xv.view(bsz, seqlen, self.n_local_heads, self.head_dim)
-            xq_rot = xq[..., :self.rotary_ndim].contiguous()
-            xk_rot = xk[..., :self.rotary_ndim].contiguous()
-            xq_pass = xq[..., self.rotary_ndim:].contiguous()
-            xk_pass = xk[..., self.rotary_ndim:].contiguous()
+            xq_rot = xq[..., : self.rotary_ndim].contiguous()
+            xk_rot = xk[..., : self.rotary_ndim].contiguous()
+            xq_pass = xq[..., self.rotary_ndim :].contiguous()
+            xk_pass = xk[..., self.rotary_ndim :].contiguous()
             xq_rot, xk_rot = apply_rotary_emb(xq_rot, xk_rot, freqs_cis=freqs_cis)
             xq = torch.cat([xq_rot, xq_pass], -1).contiguous()
             xk = torch.cat([xk_rot, xk_pass], -1).contiguous()
@@ -225,10 +228,10 @@ class TransformerBlock(nn.Module):
         self.attention = GPTNeoXAttentionFused(args)
         self.mlp = GPTNeoXMLP(dim=args.hidden_size)
         self.layer_id = layer_id
-        self.input_layernorm = nn.LayerNorm(
+        self.input_layernorm = nn.LayerNorm(args.hidden_size, eps=args.layer_norm_eps)
+        self.post_attention_layernorm = nn.LayerNorm(
             args.hidden_size, eps=args.layer_norm_eps
         )
-        self.post_attention_layernorm = nn.LayerNorm(args.hidden_size, eps=args.layer_norm_eps)
 
     def forward(
         self,
@@ -237,7 +240,9 @@ class TransformerBlock(nn.Module):
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
     ):
-        h_attn = self.attention.forward(self.input_layernorm(x), start_pos, freqs_cis, mask)
+        h_attn = self.attention.forward(
+            self.input_layernorm(x), start_pos, freqs_cis, mask
+        )
         h_mlp = self.mlp(self.post_attention_layernorm(x))
         out = x + h_attn + h_mlp
         return out
@@ -256,10 +261,16 @@ class Transformer(nn.Module):
         for layer_id in range(params.num_hidden_layers):
             self.layers.append(TransformerBlock(layer_id, params))
 
-        self.final_layer_norm = nn.LayerNorm(params.hidden_size, eps=params.layer_norm_eps)
+        self.final_layer_norm = nn.LayerNorm(
+            params.hidden_size, eps=params.layer_norm_eps
+        )
 
         self.freqs_cis = precompute_freqs_cis(
-            int(self.params.hidden_size // self.params.num_attention_heads * self.params.rotary_pct),
+            int(
+                self.params.hidden_size
+                // self.params.num_attention_heads
+                * self.params.rotary_pct
+            ),
             self.params.max_position_embeddings * 2,
         )
 
