@@ -42,11 +42,20 @@ def main():
         help="maximum sequence length for kv cache",
     )
     parser.add_argument(
-        "--max_batch_size", type=int, default=1, help="maximum batch size for kv cache"
+        "--batch_size", type=int, default=1, help="maximum batch size for kv cache"
+    )
+    parser.add_argument(
+        "--input_len", type=int, default=4, help="input context length"
+    )
+    parser.add_argument(
+        "--output_len", type=int, default=200, help="generation token number"
+    )
+    parser.add_argument(
+        "--precision", type=str, default="W4A16", help="compute precision"
     )
     args = parser.parse_args()
 
-    tinychat.utils.constants.max_batch_size = args.max_batch_size
+    tinychat.utils.constants.max_batch_size = args.batch_size
     tinychat.utils.constants.max_seq_len = args.max_seq_len
     from tinychat.models import (
         FalconForCausalLM,
@@ -64,9 +73,10 @@ def main():
 
     device = "cuda:0"
     # exLLaMA benchmarking parameters.
-    context_length = 4
-    gen_length = 200
+    context_length = args.input_len
+    gen_length = args.output_len
     input_ids = [1 for _ in range(context_length)]
+    input_ids = torch.as_tensor([input_ids], device=device).repeat((args.batch_size, 1))
 
     model_type_dict = {
         "llama": LlamaForCausalLM,
@@ -89,18 +99,21 @@ def main():
         "gptneox",
     ], "We only support llama & falcon & mpt & mistral & starcoder & stablelm now"
     model = model_type_dict[args.model_type.lower()](config).half()
-    real_quantize_model_weight(
-        model,
-        w_bit=4,
-        q_config=dict(q_group_size=args.q_group_size, zero_point=True),
-        init_only=True,
-    )
+
+    if args.precision == "W4A16":
+        real_quantize_model_weight(
+            model,
+            w_bit=4,
+            q_config=dict(q_group_size=args.q_group_size, zero_point=True),
+            init_only=True,
+        )
     model = model.to(device)
 
-    # tune_all_wqlinears(model)
-    make_quant_attn(model, device)
-    make_quant_norm(model)
-    make_fused_mlp(model)
+    if args.precision == "W4A16":
+        # tune_all_wqlinears(model)
+        make_quant_attn(model, device)
+        make_fused_mlp(model)
+        make_quant_norm(model)
     device_warmup(device)
 
     print("huggingface ckpt loaded")
@@ -117,9 +130,9 @@ def main():
             t_st = time.time()
 
             if i == 0:
-                inputs = torch.as_tensor([input_ids], device=device)
+                inputs = input_ids
             else:
-                inputs = torch.as_tensor([[token]], device=device)
+                inputs = token
             out = model(inputs, start_pos=start_pos)
             start_pos += out.shape[1]
 
@@ -127,10 +140,11 @@ def main():
             t_ed = time.time()
             time_lis.append(t_ed - t_st)
             token = out[:, -1].max(1)[1].unsqueeze(1)
+
             if args.verbose:
                 print(i, np.median(time_lis))
 
-    print(f"Speed: {1 / np.median(time_lis)} tokens per second.")
+    print(f"Speed: {1 / np.median(time_lis) * args.batch_size} tokens per second.")
 
 
 if __name__ == "__main__":

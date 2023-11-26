@@ -15,8 +15,7 @@ import gc
 
 import tinychat.utils.constants
 
-max_batch_size = tinychat.utils.constants.max_batch_size
-max_seq_len = tinychat.utils.constants.max_seq_len
+
 
 
 class QuantLlamaRotaryEmbedding(nn.Module):
@@ -184,13 +183,13 @@ class QuantLlamaAttentionFused(nn.Module):
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
 
-        kv_max_seq_len = min(max_seq_len, args.max_position_embeddings)
+        kv_max_seq_len = min(tinychat.utils.constants.max_seq_len, args.max_position_embeddings)
 
         # following fastertransformer definition
         self.cache_v = (
             torch.zeros(
                 (
-                    max_batch_size,
+                    tinychat.utils.constants.max_batch_size,
                     self.num_key_value_heads,
                     # args.max_position_embeddings,
                     kv_max_seq_len,
@@ -204,7 +203,7 @@ class QuantLlamaAttentionFused(nn.Module):
         self.cache_k = (
             torch.zeros(
                 (
-                    max_batch_size,
+                    tinychat.utils.constants.max_batch_size,
                     self.num_key_value_heads,
                     self.head_dim // 8,
                     # args.max_position_embeddings,

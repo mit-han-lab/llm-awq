@@ -28,9 +28,7 @@ from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
 import tinychat.utils.constants
 
-max_batch_size = tinychat.utils.constants.max_batch_size
 multiple_of = tinychat.utils.constants.llama_multiple_of
-max_seq_len = tinychat.utils.constants.max_seq_len
 
 
 class RMSNorm(torch.nn.Module):
@@ -100,7 +98,7 @@ class LlamaAttentionFused(nn.Module):
         else:
             self.rope_theta = 10000
 
-        kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
+        kv_max_seq_len = min(tinychat.utils.constants.max_seq_len, self.max_position_embeddings)
 
         self.q_proj = nn.Linear(
             self.hidden_size,
@@ -127,7 +125,7 @@ class LlamaAttentionFused(nn.Module):
         self.cache_v = (
             torch.zeros(
                 (
-                    max_batch_size,
+                    tinychat.utils.constants.max_batch_size,
                     self.num_key_value_heads,
                     # args.max_position_embeddings,
                     kv_max_seq_len,
@@ -141,7 +139,7 @@ class LlamaAttentionFused(nn.Module):
         self.cache_k = (
             torch.zeros(
                 (
-                    max_batch_size,
+                    tinychat.utils.constants.max_batch_size,
                     self.num_key_value_heads,
                     self.head_dim // 8,
                     # args.max_position_embeddings,
