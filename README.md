@@ -8,7 +8,7 @@
 The current release supports: 
 
 - AWQ search for accurate quantization. 
-- Pre-computed AWQ model zoo for LLMs (LLaMA, Llama2, OPT, Vicuna, LLaVA; load to generate quantized weights).
+- Pre-computed AWQ model zoo for LLMs (LLaMA, Llama2, OPT, CodeLlama, StarCoder, Vicuna, LLaVA; load to generate quantized weights).
 - Memory-efficient 4-bit Linear in PyTorch.
 - Efficient CUDA kernel implementation for fast inference (support context and decoding stage).
 - Examples on 4-bit inference of an instruction-tuned model (Vicuna) and multi-modal LM (LLaVA).
