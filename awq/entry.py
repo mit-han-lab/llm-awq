@@ -19,7 +19,9 @@ from awq.quantize.quantizer import (
 )
 from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
-
+from datasets import load_dataset
+from torch import nn
+import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_path", type=str, help="path of the hf model")
@@ -232,18 +234,53 @@ def main():
     model, enc = build_model_and_enc(args.model_path)
 
     if args.tasks is not None:
-        task_names = args.tasks.split(",")
+        # https://github.com/IST-DASLab/gptq/blob/2d65066eeb06a5c9ff5184d8cebdf33662c67faf/llama.py#L206
+        if args.tasks == "wikitext":
+            testenc = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+            testenc = enc("\n\n".join(testenc["text"]), return_tensors="pt")
+            model.seqlen = 2048
+            testenc = testenc.input_ids.to(model.device)
+            nsamples = testenc.numel() // model.seqlen
+            model = model.eval()
+            nlls = []
+            for i in tqdm.tqdm(range(nsamples), desc="evaluating..."):
+                batch = testenc[:, (i * model.seqlen) : ((i + 1) * model.seqlen)].to(
+                    model.device
+                )
+                with torch.no_grad():
+                    lm_logits = model(batch).logits
+                shift_logits = lm_logits[:, :-1, :].contiguous().float()
+                shift_labels = testenc[
+                    :, (i * model.seqlen) : ((i + 1) * model.seqlen)
+                ][:, 1:]
+                loss_fct = nn.CrossEntropyLoss()
+                loss = loss_fct(
+                    shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+                )
+                neg_log_likelihood = loss.float() * model.seqlen
+                nlls.append(neg_log_likelihood)
 
-        lm_eval_model = LMEvalAdaptor(args.model_path, model, enc, args.batch_size)
-        results = evaluator.simple_evaluate(
-            model=lm_eval_model,
-            tasks=task_names,
-            batch_size=args.batch_size,
-            no_cache=True,
-            num_fewshot=args.num_fewshot,
-        )
+            ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * model.seqlen))
+            print(ppl.item())
 
-        print(evaluator.make_table(results))
+            results = {"ppl": ppl.item()}
+            if args.output_path is not None:
+                os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
+                with open(args.output_path, "w") as f:
+                    json.dump(results, f, indent=2)
+        else:
+            task_names = args.tasks.split(",")
+
+            lm_eval_model = LMEvalAdaptor(args.model_path, model, enc, args.batch_size)
+            results = evaluator.simple_evaluate(
+                model=lm_eval_model,
+                tasks=task_names,
+                batch_size=args.batch_size,
+                no_cache=True,
+                num_fewshot=args.num_fewshot,
+            )
+
+            print(evaluator.make_table(results))
 
         if args.output_path is not None:
             os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
