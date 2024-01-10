@@ -77,6 +77,7 @@ def load_awq_model(model, checkpoint, w_bit, group_size, device):
                     "BloomBlock",
                     "MPTBlock",
                     "DecoderLayer",
+                    "CLIPEncoderLayer",
                 ],
             ).to(device)
     return model

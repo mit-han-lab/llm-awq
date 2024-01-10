@@ -45,7 +45,7 @@ class QuantLlamaRotaryEmbedding(nn.Module):
 
         freqs = torch.einsum("i,j->ij", t, self.inv_freq)
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
+        # emb = torch.cat((freqs, freqs), dim=-1)
 
         cos = freqs.cos()
         sin = freqs.sin()
@@ -340,7 +340,6 @@ def make_quant_attn(model, dev):
         qkv_layer.bias = bias
         qkv_layer.split_k_iters = q_proj.split_k_iters
         # We're dropping the rotary embedding layer m.rotary_emb here. We don't need it in the triton branch.
-
         if isinstance(m, LlamaAttention):
             attn = QuantLlamaAttention(
                 m.hidden_size, m.num_heads, qkv_layer, m.o_proj, dev

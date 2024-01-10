@@ -71,6 +71,8 @@ def stream_output(output_stream):
         print("=" * 50)
         print("Speed of Inference")
         print("-" * 50)
+        # print(f"Context Stage Time   : {context_time * 1000:.2f} ms")
+        # print(f"Context Stage Tokens : {context_tokens} tokens")
         # print(f"Context Stage    : {context_time/context_tokens * 1000:.2f} ms/token")
         print(
             f"Generation Stage : {np.average(generation_time_list) * 1000:.2f} ms/token"
