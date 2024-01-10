@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from typing import Optional, Tuple
+
 # from awq.quantize.qmodule import WQLinear
 # import awq_inference_engine
 # from tinychat.models.llama import apply_rotary_emb
@@ -14,16 +15,20 @@ max_batch_size = tinychat.utils.constants.max_batch_size
 max_seq_len = tinychat.utils.constants.max_seq_len
 
 from transformers.activations import ACT2FN
-from transformers.models.clip.configuration_clip import CLIPConfig, CLIPTextConfig, CLIPVisionConfig
+from transformers.models.clip.configuration_clip import (
+    CLIPConfig,
+    CLIPTextConfig,
+    CLIPVisionConfig,
+)
 from transformers.models.clip.modeling_clip import CLIPAttention
-
 
 
 class CLIPAttentionFused(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-
-    def __init__(self, hidden_size, num_heads, qkv_proj, out_proj, dev, attention_dropout = 0.0):
+    def __init__(
+        self, hidden_size, num_heads, qkv_proj, out_proj, dev, attention_dropout=0.0
+    ):
         super().__init__()
         self.embed_dim = hidden_size
         self.num_heads = num_heads
@@ -40,7 +45,11 @@ class CLIPAttentionFused(nn.Module):
         self.out_proj = out_proj
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
-        return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        return (
+            tensor.view(bsz, seq_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+            .contiguous()
+        )
 
     def forward(
         self,
@@ -62,15 +71,22 @@ class CLIPAttentionFused(nn.Module):
 
         proj_shape = (bsz * self.num_heads, -1, self.head_dim)
 
-        query_states = query_states.view(
-            bsz, tgt_len, self.num_heads, self.head_dim
-        ).transpose(1, 2).view(*proj_shape) * self.scale
-        key_states = key_states.view(
-            bsz, tgt_len, self.num_heads, self.head_dim
-        ).transpose(1, 2).view(*proj_shape)
-        value_states = value_states.view(
-            bsz, tgt_len, self.num_heads, self.head_dim
-        ).transpose(1, 2).view(*proj_shape)
+        query_states = (
+            query_states.view(bsz, tgt_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+            .view(*proj_shape)
+            * self.scale
+        )
+        key_states = (
+            key_states.view(bsz, tgt_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+            .view(*proj_shape)
+        )
+        value_states = (
+            value_states.view(bsz, tgt_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+            .view(*proj_shape)
+        )
 
         src_len = key_states.size(1)
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
@@ -88,7 +104,10 @@ class CLIPAttentionFused(nn.Module):
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is"
                     f" {causal_attention_mask.size()}"
                 )
-            attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + causal_attention_mask
+            attn_weights = (
+                attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
+                + causal_attention_mask
+            )
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
         if attention_mask is not None:
@@ -96,7 +115,10 @@ class CLIPAttentionFused(nn.Module):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
                 )
-            attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
+            attn_weights = (
+                attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
+                + attention_mask
+            )
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
@@ -106,12 +128,18 @@ class CLIPAttentionFused(nn.Module):
             # make sure that attn_weights keeps its gradient.
             # In order to do so, attn_weights have to reshaped
             # twice and have to be reused in the following
-            attn_weights_reshaped = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-            attn_weights = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
+            attn_weights_reshaped = attn_weights.view(
+                bsz, self.num_heads, tgt_len, src_len
+            )
+            attn_weights = attn_weights_reshaped.view(
+                bsz * self.num_heads, tgt_len, src_len
+            )
         else:
             attn_weights_reshaped = None
 
-        attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
+        attn_probs = nn.functional.dropout(
+            attn_weights, p=self.dropout, training=self.training
+        )
 
         attn_output = torch.bmm(attn_probs, value_states)
 

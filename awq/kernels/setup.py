@@ -3,16 +3,9 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CppExtensio
 
 
 extra_compile_args = {
-    "cxx": [
-        "-g", 
-        "-O3", 
-        "-fopenmp", 
-        "-lgomp", 
-        "-std=c++17",
-        "-DENABLE_BF16"
-    ],
+    "cxx": ["-g", "-O3", "-fopenmp", "-lgomp", "-std=c++17", "-DENABLE_BF16"],
     "nvcc": [
-        "-O3", 
+        "-O3",
         "-std=c++17",
         "-DENABLE_BF16",  # TODO
         "-U__CUDA_NO_HALF_OPERATORS__",
@@ -24,7 +17,7 @@ extra_compile_args = {
         "--expt-relaxed-constexpr",
         "--expt-extended-lambda",
         "--use_fast_math",
-        "--threads=8"
+        "--threads=8",
     ],
 }
 
@@ -35,13 +28,13 @@ setup(
         CUDAExtension(
             name="awq_inference_engine",
             sources=[
-                "csrc/pybind.cpp", 
+                "csrc/pybind.cpp",
                 "csrc/quantization/gemm_cuda_gen.cu",
                 "csrc/quantization/gemv_cuda.cu",
                 "csrc/layernorm/layernorm.cu",
                 "csrc/position_embedding/pos_encoding_kernels.cu",
                 "csrc/attention/ft_attention.cpp",
-                "csrc/attention/decoder_masked_multihead_attention.cu"
+                "csrc/attention/decoder_masked_multihead_attention.cu",
             ],
             extra_compile_args=extra_compile_args,
         ),

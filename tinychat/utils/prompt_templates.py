@@ -135,6 +135,7 @@ class Llama2Prompter(OneShotBasePrompter):
             oneshot_example, system_inst, role1, role2, sen_spliter, qa_spliter
         )
 
+
 class LlavaLlamaPrompter(BasePrompter):
     def __init__(self):
         system_inst = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions."
@@ -143,6 +144,7 @@ class LlavaLlamaPrompter(BasePrompter):
         sen_spliter = " "
         qa_spliter = "</s>"
         super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter)
+
 
 class FalconSimplePrompter(BasePrompter):
     def __init__(self):

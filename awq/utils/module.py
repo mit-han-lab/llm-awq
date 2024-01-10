@@ -1,5 +1,3 @@
-
-
 def get_op_by_name(module, op_name):
     # get the op by its name relative to the module
     for name, m in module.named_modules():
@@ -9,10 +7,10 @@ def get_op_by_name(module, op_name):
 
 
 def set_op_by_name(layer, name, new_module):
-    levels = name.split('.')
+    levels = name.split(".")
     if len(levels) > 1:
         mod_ = layer
-        for l_idx in range(len(levels)-1):
+        for l_idx in range(len(levels) - 1):
             if levels[l_idx].isdigit():
                 mod_ = mod_[int(levels[l_idx])]
             else:

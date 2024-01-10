@@ -22,9 +22,9 @@ def get_named_linears(module):
 
 
 def get_blocks(model):
-    if model.__class__.__name__ == 'LlamaForCausalLM':
+    if model.__class__.__name__ == "LlamaForCausalLM":
         layers = model.model.layers
-    elif model.__class__.__name__ == 'LlavaLlamaForCausalLM':
+    elif model.__class__.__name__ == "LlavaLlamaForCausalLM":
         # layers = [model.model.layers, model.model.vision_tower.vision_tower.vision_model.encoder.layers]
         layers = model.model.layers
     elif isinstance(model, OPTForCausalLM):
@@ -42,7 +42,8 @@ def get_blocks(model):
     else:
         raise NotImplementedError(type(model))
     return layers
-    
+
+
 def move_embed(model, device):
     if isinstance(model, LlamaForCausalLM):
         model.model.embed_tokens = model.model.embed_tokens.to(device)
@@ -51,10 +52,14 @@ def move_embed(model, device):
         model.model.vision_tower.vision_tower.vision_model.embeddings.to(device)
     elif isinstance(model, OPTForCausalLM):
         model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.to(device)
-        model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(device)
+        model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(
+            device
+        )
     elif isinstance(model, BloomForCausalLM):
         model.transformer.word_embeddings = model.transformer.word_embeddings.to(device)
-        model.transformer.word_embeddings_layernorm = model.transformer.word_embeddings_layernorm.to(device)
+        model.transformer.word_embeddings_layernorm = (
+            model.transformer.word_embeddings_layernorm.to(device)
+        )
     elif "mpt" in str(model.__class__).lower():
         model.transformer.wte = model.transformer.wte.to(device)
         model.transformer.emb_drop = model.transformer.emb_drop.to(device)
@@ -71,12 +76,17 @@ def move_embed(model, device):
     else:
         raise NotImplementedError(type(model))
 
+
 @torch.no_grad()
 def run_awq(
-    model, enc,
-    w_bit, q_config,
-    n_samples=512, seqlen=512,
-    auto_scale=True, mse_range=True,
+    model,
+    enc,
+    w_bit,
+    q_config,
+    n_samples=512,
+    seqlen=512,
+    auto_scale=True,
+    mse_range=True,
     # some configs for ablation study
     calib_data="pileval",
 ):
@@ -86,7 +96,7 @@ def run_awq(
     if "bigcode" in str(model.__class__).lower():
         # otherwise attention_mask will always be on cpu.
         model.transformer.bias = model.transformer.bias.to("cuda")
-    
+
     layer_group = get_blocks(model)
     if isinstance(layer_group, List):
         layer_group_num = len(layer_group)
@@ -94,9 +104,9 @@ def run_awq(
         layer_group_num = 1
 
     for layer_group_iter in range(layer_group_num):
-
         samples = get_calib_dataset(
-            data=calib_data, tokenizer=enc, n_samples=n_samples, block_size=seqlen)
+            data=calib_data, tokenizer=enc, n_samples=n_samples, block_size=seqlen
+        )
         samples = torch.cat(samples, dim=0)
 
         inps = []
@@ -135,7 +145,7 @@ def run_awq(
 
         layers[0] = layers[0].cpu()
         move_embed(model, "cpu")
-        
+
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -145,7 +155,10 @@ def run_awq(
         }
 
         # solve layer by layer
-        for i in tqdm.tqdm(range(len(layers)), desc=f"Running AWQ... (group {layer_group_iter + 1}/{layer_group_num})"):
+        for i in tqdm.tqdm(
+            range(len(layers)),
+            desc=f"Running AWQ... (group {layer_group_iter + 1}/{layer_group_num})",
+        ):
             layer = layers[i]
             layer = layer.cuda()
             named_linears = get_named_linears(layer)
@@ -159,9 +172,13 @@ def run_awq(
             input_feat = defaultdict(list)
             handles = []
             for name in named_linears:
-                handles.append(named_linears[name].register_forward_hook(
-                    functools.partial(cache_input_hook, name=name,
-                                    feat_dict=input_feat)))
+                handles.append(
+                    named_linears[name].register_forward_hook(
+                        functools.partial(
+                            cache_input_hook, name=name, feat_dict=input_feat
+                        )
+                    )
+                )
             inps = inps.to(next(layer.parameters()).device)  # in case multi-gpu
             # get output as next layer's input
             inps = layer(inps, **layer_kwargs)[0]
@@ -173,35 +190,47 @@ def run_awq(
             # Clear GPU memory
             torch.cuda.empty_cache()
 
-            if auto_scale:  # if it applies, we should also modify the input_feat with scales
+            if (
+                auto_scale
+            ):  # if it applies, we should also modify the input_feat with scales
                 scales_list = auto_scale_block(
-                    layer, layer_kwargs,
-                    w_bit=w_bit, q_config=q_config,
+                    layer,
+                    layer_kwargs,
+                    w_bit=w_bit,
+                    q_config=q_config,
                     input_feat=input_feat,
                 )
                 # apply_scale(layer, scales_list, input_feat_dict=input_feat)
                 apply_scale(layers[i], scales_list, input_feat_dict=input_feat)
                 # append prefix to make names global
-                awq_results["scale"] += append_str_prefix(scales_list, get_op_name(model, layer) + ".")
+                awq_results["scale"] += append_str_prefix(
+                    scales_list, get_op_name(model, layer) + "."
+                )
 
             # Clear GPU memory
             torch.cuda.empty_cache()
-            
+
             if mse_range:
-                clip_list = auto_clip_block(layer,
-                                w_bit=w_bit, q_config=q_config,
-                                input_feat=input_feat,)
+                clip_list = auto_clip_block(
+                    layer,
+                    w_bit=w_bit,
+                    q_config=q_config,
+                    input_feat=input_feat,
+                )
                 apply_clip(layer, clip_list)
                 # append prefix to make names global
-                awq_results["clip"] += append_str_prefix(clip_list, get_op_name(model, layer) + ".")
+                awq_results["clip"] += append_str_prefix(
+                    clip_list, get_op_name(model, layer) + "."
+                )
 
             layer = layer.cpu()
             # Haotian: check activation replacement
             del input_feat
             gc.collect()
             torch.cuda.empty_cache()
-        
+
     return awq_results
+
 
 def apply_awq(model, awq_results):
     apply_scale(model, awq_results["scale"])

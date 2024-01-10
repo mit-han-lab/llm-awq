@@ -5,7 +5,6 @@ import fnmatch
 
 
 class LMEvalAdaptor(BaseLM):
-
     def __init__(self, model_name, model, tokenizer, batch_size=1, max_length=-1):
         super().__init__()
 
@@ -37,19 +36,19 @@ class LMEvalAdaptor(BaseLM):
     def max_length(self):
         if self._max_length != -1:
             return self._max_length
-        if hasattr(self.model.config, 'n_ctx'):
+        if hasattr(self.model.config, "n_ctx"):
             return self.model.config.n_ctx
-        elif hasattr(self.model.config, 'max_position_embeddings'):
+        elif hasattr(self.model.config, "max_position_embeddings"):
             return self.model.config.max_position_embeddings
-        elif hasattr(self.model.config, 'n_positions'):
+        elif hasattr(self.model.config, "n_positions"):
             return self.model.config.n_positions
-        elif 'bloom' in self.model_name:
+        elif "bloom" in self.model_name:
             return 2048
-        elif 'llama' in self.model_name:
+        elif "llama" in self.model_name:
             return 2048  # TODO: did not check this
-        elif 'mpt' in self.model_name:
+        elif "mpt" in self.model_name:
             return 2048
-        elif 'falcon' in self.model_name:
+        elif "falcon" in self.model_name:
             return 2048
         else:
             print(self.model.config)
@@ -82,7 +81,10 @@ class LMEvalAdaptor(BaseLM):
         logits returned from the model
         """
         with torch.no_grad():
-            if isinstance(self.model, transformers.models.t5.modeling_t5.T5ForConditionalGeneration):
+            if isinstance(
+                self.model,
+                transformers.models.t5.modeling_t5.T5ForConditionalGeneration,
+            ):
                 dec_inps = torch.cat(
                     [
                         torch.tensor(
@@ -94,21 +96,21 @@ class LMEvalAdaptor(BaseLM):
                     ],
                     dim=1,
                 )
-             
-                kwargs = {"decoder_input_ids": dec_inps,}
+
+                kwargs = {
+                    "decoder_input_ids": dec_inps,
+                }
             else:
                 kwargs = {}
             out = self.model(inps, **kwargs)[0]
-            if "opt" in self.model_name:  # there are a few extra tokens in opt, which we should omit
+            if (
+                "opt" in self.model_name
+            ):  # there are a few extra tokens in opt, which we should omit
                 return out[:, :, :50257]
             else:
                 return out  # [:, :, :self.tokenizer.vocab_size]
 
     def _model_generate(self, context, max_length, eos_token_id):
         return self.model.generate(
-            context,
-            max_length=max_length,
-            eos_token_id=eos_token_id,
-            do_sample=False
+            context, max_length=max_length, eos_token_id=eos_token_id, do_sample=False
         )
-

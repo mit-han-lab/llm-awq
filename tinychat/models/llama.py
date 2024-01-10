@@ -282,7 +282,9 @@ class Transformer(nn.Module):
         )
 
     @torch.inference_mode()
-    def forward(self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor=None):
+    def forward(
+        self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor = None
+    ):
         if tokens is not None:
             _bsz, seqlen = tokens.shape
             h = self.embed_tokens(tokens)
@@ -294,9 +296,7 @@ class Transformer(nn.Module):
 
         mask = None
         if seqlen > 1:
-            mask = torch.full(
-                (1, 1, seqlen, seqlen), float("-inf"), device=h.device
-            )
+            mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=h.device)
             mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
         for layer in self.layers:
             h = layer(h, start_pos, freqs_cis, mask)
@@ -312,7 +312,9 @@ class LlamaForCausalLM(nn.Module):
         self.lm_head = nn.Linear(params.hidden_size, params.vocab_size, bias=False)
 
     @torch.inference_mode()
-    def forward(self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor=None):
+    def forward(
+        self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor = None
+    ):
         h = self.model(tokens, start_pos, inputs_embeds)
         output = self.lm_head(h)  # only compute last logits
         return output.float()

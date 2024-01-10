@@ -12,6 +12,7 @@ def device_warmup(device: str):
     for i in range(100):
         torch.mm(warm_up, warm_up)
 
+
 def tune_llava_patch_embedding(vision_tower, device):
     # run the llava_patch_embedding layer to pre-tune the kernel configuration
     device = vision_tower.device

@@ -32,16 +32,25 @@ def prepare_logits_processor(
         processor_list.append(TopKLogitsWarper(top_k))
     return processor_list
 
+
 IMAGE_TOKEN_INDEX = -200
-def tokenizer_image_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX, return_tensors=None):
-    prompt_chunks = [tokenizer(chunk).input_ids for chunk in prompt.split('<image>')]
+
+
+def tokenizer_image_token(
+    prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX, return_tensors=None
+):
+    prompt_chunks = [tokenizer(chunk).input_ids for chunk in prompt.split("<image>")]
 
     def insert_separator(X, sep):
-        return [ele for sublist in zip(X, [sep]*len(X)) for ele in sublist][:-1]
+        return [ele for sublist in zip(X, [sep] * len(X)) for ele in sublist][:-1]
 
     input_ids = []
     offset = 0
-    if len(prompt_chunks) > 0 and len(prompt_chunks[0]) > 0 and prompt_chunks[0][0] == tokenizer.bos_token_id:
+    if (
+        len(prompt_chunks) > 0
+        and len(prompt_chunks[0]) > 0
+        and prompt_chunks[0][0] == tokenizer.bos_token_id
+    ):
         offset = 1
         input_ids.append(prompt_chunks[0][0])
 
@@ -49,10 +58,11 @@ def tokenizer_image_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX
         input_ids.extend(x[offset:])
 
     if return_tensors is not None:
-        if return_tensors == 'pt':
+        if return_tensors == "pt":
             return torch.tensor(input_ids, dtype=torch.long)
-        raise ValueError(f'Unsupported tensor type: {return_tensors}')
+        raise ValueError(f"Unsupported tensor type: {return_tensors}")
     return input_ids
+
 
 @torch.inference_mode()
 def LlavaStreamGenerator(
@@ -67,7 +77,11 @@ def LlavaStreamGenerator(
     image_tensor: Optional[torch.FloatTensor] = None,
 ):
     # input_ids = tokenizer(input).input_ids
-    input_ids = tokenizer_image_token(input, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(device)
+    input_ids = (
+        tokenizer_image_token(input, tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt")
+        .unsqueeze(0)
+        .to(device)
+    )
     input_echo_len = len(input_ids)
     # print(input_ids)
     output_ids = list(input_ids)
@@ -86,10 +100,12 @@ def LlavaStreamGenerator(
     max_new_tokens = gen_params.n_predict
     start_pos = 0
 
-    batch_size = 1 # TODO: support multi-batch
-    position_ids = [torch.arange(len(input_ids), dtype=torch.long, device=device) for i in range(batch_size)]
+    batch_size = 1  # TODO: support multi-batch
+    position_ids = [
+        torch.arange(len(input_ids), dtype=torch.long, device=device)
+        for i in range(batch_size)
+    ]
     position_ids = torch.stack(position_ids)
-
 
     for i in range(max_new_tokens):
         torch.cuda.synchronize()
@@ -99,9 +115,11 @@ def LlavaStreamGenerator(
             # inputs = torch.as_tensor([input_ids], device=device)
             inputs = input_ids
         else:
-            position_ids = (position_ids[:,-1] + 1).reshape(1, 1)    # [Important] fixed the bug of positions
+            position_ids = (position_ids[:, -1] + 1).reshape(
+                1, 1
+            )  # [Important] fixed the bug of positions
             inputs = torch.as_tensor([[token]], device=device)
-              
+
         attention_mask = torch.ones(size=inputs.shape, dtype=torch.int, device=device)
 
         if (
@@ -114,22 +132,22 @@ def LlavaStreamGenerator(
         ):
             if i == 0:  # Context Stage
                 out = model(
-                            input_ids=inputs,
-                            attention_mask=attention_mask, 
-                            position_ids=position_ids, 
-                            use_cache=True, 
-                            output_attentions=False,
-                            output_hidden_states=False,
-                            images=image_tensor,
-                            return_dict=True,
-                        )
+                    input_ids=inputs,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    use_cache=True,
+                    output_attentions=False,
+                    output_hidden_states=False,
+                    images=image_tensor,
+                    return_dict=True,
+                )
                 logits = out.logits
                 past_key_values = out.past_key_values
             else:
                 out = model(
                     input_ids=inputs,
-                    attention_mask=attention_mask, 
-                    position_ids=position_ids, 
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
                     use_cache=True,
                     past_key_values=past_key_values,
                     output_attentions=False,
@@ -140,12 +158,13 @@ def LlavaStreamGenerator(
                 logits = out.logits
                 past_key_values = out.past_key_values
         else:
-            out = model(input_ids=inputs, 
-                        start_pos=start_pos, 
-                        images=image_tensor, 
-                        position_ids=position_ids, 
-                        attention_mask=attention_mask,
-                    )
+            out = model(
+                input_ids=inputs,
+                start_pos=start_pos,
+                images=image_tensor,
+                position_ids=position_ids,
+                attention_mask=attention_mask,
+            )
             start_pos += out.shape[1]
             logits = out
         torch.cuda.synchronize()

@@ -18,13 +18,15 @@ from PIL import Image
 from io import BytesIO
 import requests
 
+
 def load_image(image_file):
-    if image_file.startswith('http://') or image_file.startswith('https://'):
+    if image_file.startswith("http://") or image_file.startswith("https://"):
         response = requests.get(image_file)
-        image = Image.open(BytesIO(response.content)).convert('RGB')
+        image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
-        image = Image.open(image_file).convert('RGB')
+        image = Image.open(image_file).convert("RGB")
     return image
+
 
 def expand2square(pil_img, background_color):
     """
@@ -42,19 +44,24 @@ def expand2square(pil_img, background_color):
         result.paste(pil_img, ((height - width) // 2, 0))
         return result
 
+
 def process_images(images, image_processor, model_cfg):
     """
     Copy from Llava codebase for image preprocessing.
     """
     image_aspect_ratio = getattr(model_cfg, "image_aspect_ratio", None)
     new_images = []
-    if image_aspect_ratio == 'pad':
+    if image_aspect_ratio == "pad":
         for image in images:
-            image = expand2square(image, tuple(int(x*255) for x in image_processor.image_mean))
-            image = image_processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
+            image = expand2square(
+                image, tuple(int(x * 255) for x in image_processor.image_mean)
+            )
+            image = image_processor.preprocess(image, return_tensors="pt")[
+                "pixel_values"
+            ][0]
             new_images.append(image)
     else:
-        return image_processor(images, return_tensors='pt')['pixel_values']
+        return image_processor(images, return_tensors="pt")["pixel_values"]
     if all(x.shape == new_images[0].shape for x in new_images):
         new_images = torch.stack(new_images, dim=0)
     return new_images

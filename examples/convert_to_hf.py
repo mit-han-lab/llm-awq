@@ -1,7 +1,7 @@
 # This script demonstrates how you can convert your model into HF format
 # easily and push the quantized weights on the Hub using simple tools.
-# Make sure to have transformers > 4.34 and that you have ran 
-# `huggingface-cli login` on your terminal before running this 
+# Make sure to have transformers > 4.34 and that you have ran
+# `huggingface-cli login` on your terminal before running this
 # script
 import os
 import argparse
@@ -15,12 +15,24 @@ from huggingface_hub import HfApi
 api = HfApi()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_path', type=str, help='path of the original hf model', required=True)
-parser.add_argument("--quantized_model_path", type=str, help='path of the quantized AWQ model', required=True)
-parser.add_argument("--quantized_model_hub_path", type=str, help='path of the quantized AWQ model to push on the Hub', required=True)
-parser.add_argument('--w_bit', type=int, default=4, help='')
+parser.add_argument(
+    "--model_path", type=str, help="path of the original hf model", required=True
+)
+parser.add_argument(
+    "--quantized_model_path",
+    type=str,
+    help="path of the quantized AWQ model",
+    required=True,
+)
+parser.add_argument(
+    "--quantized_model_hub_path",
+    type=str,
+    help="path of the quantized AWQ model to push on the Hub",
+    required=True,
+)
+parser.add_argument("--w_bit", type=int, default=4, help="")
 parser.add_argument("--q_group_size", default=128, type=int)
-parser.add_argument("--no_zero_point", action='store_true')
+parser.add_argument("--no_zero_point", action="store_true")
 
 args = parser.parse_args()
 
