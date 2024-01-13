@@ -18,7 +18,7 @@ def tune_llava_patch_embedding(vision_tower, device):
     device = vision_tower.device
     patch_embedding = vision_tower.vision_tower.vision_model.embeddings.patch_embedding
     patch_embedding = patch_embedding.to(device)
-    image = torch.randn((1, patch_embedding.in_channels, 336, 336)).to(device)
+    image = torch.randn((1, patch_embedding.in_channels, 336, 336)).to(device).to(patch_embedding.weight.dtype)
     for i in range(100):
         patch_embedding(image)
 

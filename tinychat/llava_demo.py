@@ -112,6 +112,7 @@ def main(args):
     if not vision_tower.is_loaded:
         vision_tower.load_model()
     image_processor = vision_tower.image_processor
+    vision_tower = vision_tower.half()
 
     if args.precision == "W16A16":
         pbar = tqdm(range(1))
@@ -177,6 +178,8 @@ def main(args):
     model_prompter = get_prompter(args.model_type, args.model_path, short_prompt)
     stop_token_ids = get_stop_token_ids(args.model_type, args.model_path)
     count = 0
+
+    model.eval()
     while True:
         # Get input from the user
         input_prompt = input("USER: ")
