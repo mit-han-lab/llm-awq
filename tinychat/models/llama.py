@@ -1,5 +1,18 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# This software may be used and distributed according to the terms of the GNU General Public License version 3.
+"""
+@article{touvron2023llama,
+  title={Llama 2: Open foundation and fine-tuned chat models},
+  author={Touvron, Hugo and Martin, Louis and Stone, Kevin and Albert, Peter and Almahairi, Amjad and Babaei, Yasmine and Bashlykov, Nikolay and Batra, Soumya and Bhargava, Prajjwal and Bhosale, Shruti and others},
+  journal={arXiv preprint arXiv:2307.09288},
+  year={2023}
+}
+
+@article{touvron2023llama,
+  title={Llama: Open and efficient foundation language models},
+  author={Touvron, Hugo and Lavril, Thibaut and Izacard, Gautier and Martinet, Xavier and Lachaux, Marie-Anne and Lacroix, Timoth{\'e}e and Rozi{\`e}re, Baptiste and Goyal, Naman and Hambro, Eric and Azhar, Faisal and others},
+  journal={arXiv preprint arXiv:2302.13971},
+  year={2023}
+}
+"""
 
 from typing import Optional, Tuple
 from dataclasses import dataclass
@@ -15,9 +28,7 @@ from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
 import tinychat.utils.constants
 
-max_batch_size = tinychat.utils.constants.max_batch_size
 multiple_of = tinychat.utils.constants.llama_multiple_of
-max_seq_len = tinychat.utils.constants.max_seq_len
 
 
 class RMSNorm(torch.nn.Module):
@@ -82,9 +93,12 @@ class LlamaAttentionFused(nn.Module):
         self.num_key_value_heads = args.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = args.max_position_embeddings
-        # self.rope_theta = args.rope_theta
+        if hasattr(args, "rope_theta"):
+            self.rope_theta = args.rope_theta
+        else:
+            self.rope_theta = 10000
 
-        kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
+        kv_max_seq_len = min(tinychat.utils.constants.max_seq_len, self.max_position_embeddings)
 
         self.q_proj = nn.Linear(
             self.hidden_size,
@@ -111,7 +125,7 @@ class LlamaAttentionFused(nn.Module):
         self.cache_v = (
             torch.zeros(
                 (
-                    max_batch_size,
+                    tinychat.utils.constants.max_batch_size,
                     self.num_key_value_heads,
                     # args.max_position_embeddings,
                     kv_max_seq_len,
@@ -125,7 +139,7 @@ class LlamaAttentionFused(nn.Module):
         self.cache_k = (
             torch.zeros(
                 (
-                    max_batch_size,
+                    tinychat.utils.constants.max_batch_size,
                     self.num_key_value_heads,
                     self.head_dim // 8,
                     # args.max_position_embeddings,
@@ -213,7 +227,7 @@ class LlamaAttentionFused(nn.Module):
                 None,
                 start_pos,
                 self.head_dim,
-                10000,
+                self.rope_theta,
                 True,
             )
             output = output.reshape(bsz, 1, -1)
@@ -244,8 +258,16 @@ class TransformerBlock(nn.Module):
         self.self_attn = LlamaAttentionFused(args)
         self.mlp = LlamaMLP(args)
         self.layer_id = layer_id
-        self.input_layernorm = RMSNorm(args.hidden_size, eps=args.rms_norm_eps)
-        self.post_attention_layernorm = RMSNorm(args.hidden_size, eps=args.rms_norm_eps)
+        if hasattr(args, "rms_norm_eps"):
+            self.input_layernorm = RMSNorm(args.hidden_size, eps=args.rms_norm_eps)
+            self.post_attention_layernorm = RMSNorm(
+                args.hidden_size, eps=args.rms_norm_eps
+            )
+        else:
+            self.input_layernorm = nn.LayerNorm(args.hidden_size, eps=args.norm_eps)
+            self.post_attention_layernorm = nn.LayerNorm(
+                args.hidden_size, eps=args.norm_eps
+            )
 
     def forward(
         self,
@@ -267,6 +289,10 @@ class Transformer(nn.Module):
         self.params = params
         self.vocab_size = params.vocab_size
         self.n_layers = params.num_hidden_layers
+        if hasattr(params, "rope_theta"):
+            self.rope_theta = params.rope_theta
+        else:
+            self.rope_theta = 10000
 
         self.embed_tokens = nn.Embedding(params.vocab_size, params.hidden_size)
 
@@ -274,11 +300,15 @@ class Transformer(nn.Module):
         for layer_id in range(params.num_hidden_layers):
             self.layers.append(TransformerBlock(layer_id, params))
 
-        self.norm = RMSNorm(params.hidden_size, eps=params.rms_norm_eps)
+        if hasattr(params, "rms_norm_eps"):
+            self.norm = RMSNorm(params.hidden_size, eps=params.rms_norm_eps)
+        else:
+            self.norm = nn.LayerNorm(params.hidden_size, eps=params.norm_eps)
 
         self.freqs_cis = precompute_freqs_cis(
             self.params.hidden_size // self.params.num_attention_heads,
             self.params.max_position_embeddings * 2,
+            theta=self.rope_theta,
         )
 
     @torch.inference_mode()

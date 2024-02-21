@@ -15,8 +15,7 @@ import gc
 
 import tinychat.utils.constants
 
-max_batch_size = tinychat.utils.constants.max_batch_size
-max_seq_len = tinychat.utils.constants.max_seq_len
+
 
 
 class QuantLlamaRotaryEmbedding(nn.Module):
@@ -79,7 +78,7 @@ class QuantLlamaRotaryEmbedding(nn.Module):
 class QuantLlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, hidden_size, num_heads, qkv_proj, o_proj, dev):
+    def __init__(self, hidden_size, num_heads, qkv_proj, o_proj, rope_theta, dev):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_heads = num_heads
@@ -93,7 +92,7 @@ class QuantLlamaAttention(nn.Module):
         self.qkv_proj = qkv_proj
         self.o_proj = o_proj
         self.rotary_emb = QuantLlamaRotaryEmbedding(
-            self.head_dim, max_position_embeddings=2048, device=dev
+            self.head_dim, max_position_embeddings=2048, device=dev, base=rope_theta
         )
 
     def forward(
@@ -176,18 +175,21 @@ class QuantLlamaAttentionFused(nn.Module):
         self.num_key_value_heads = args.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = args.max_position_embeddings
-        # self.rope_theta = args.rope_theta
+        if hasattr(args, "rope_theta"):
+            self.rope_theta = args.rope_theta
+        else:
+            self.rope_theta = 10000
 
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
 
-        kv_max_seq_len = min(max_seq_len, args.max_position_embeddings)
+        kv_max_seq_len = min(tinychat.utils.constants.max_seq_len, args.max_position_embeddings)
 
         # following fastertransformer definition
         self.cache_v = (
             torch.zeros(
                 (
-                    max_batch_size,
+                    tinychat.utils.constants.max_batch_size,
                     self.num_key_value_heads,
                     # args.max_position_embeddings,
                     kv_max_seq_len,
@@ -201,7 +203,7 @@ class QuantLlamaAttentionFused(nn.Module):
         self.cache_k = (
             torch.zeros(
                 (
-                    max_batch_size,
+                    tinychat.utils.constants.max_batch_size,
                     self.num_key_value_heads,
                     self.head_dim // 8,
                     # args.max_position_embeddings,
@@ -293,7 +295,7 @@ class QuantLlamaAttentionFused(nn.Module):
                 None,
                 start_pos,
                 self.head_dim,
-                10000,
+                self.rope_theta,
                 True,
             )
             output = output.reshape(bsz, 1, -1)
@@ -343,7 +345,7 @@ def make_quant_attn(model, dev):
 
         if isinstance(m, LlamaAttention):
             attn = QuantLlamaAttention(
-                m.hidden_size, m.num_heads, qkv_layer, m.o_proj, dev
+                m.hidden_size, m.num_heads, qkv_layer, m.o_proj, dev, m.rope_theta
             )
         else:
             attn = QuantLlamaAttentionFused(

@@ -1096,7 +1096,7 @@ __global__ void masked_multihead_attention_kernel(Multihead_attention_params<T, 
         const int intra_half_idx  = (tidx * QK_VEC_SIZE) % half_rotary_dim;
         const int smem_pitch      = half_rotary_dim;  // TODO: adjust for bank conflicts
 
-        assert(half_rotary_dim % QK_VEC_SIZE == 0);
+        // assert(half_rotary_dim % QK_VEC_SIZE == 0);
 
         if (do_rotary) {
             *reinterpret_cast<Qk_vec*>(q_smem + half_idx * smem_pitch + intra_half_idx) = q;

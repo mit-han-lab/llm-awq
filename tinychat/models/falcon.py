@@ -1,5 +1,14 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# This software may be used and distributed according to the terms of the GNU General Public License version 3.
+"""
+@article{refinedweb,
+  title={The {R}efined{W}eb dataset for {F}alcon {LLM}: outperforming curated corpora with web data, and web data only},
+  author={Guilherme Penedo and Quentin Malartic and Daniel Hesslow and Ruxandra Cojocaru and Alessandro Cappelli and Hamza Alobeidli and Baptiste Pannier and Ebtesam Almazrouei and Julien Launay},
+  journal={arXiv preprint arXiv:2306.01116},
+  eprint={2306.01116},
+  eprinttype = {arXiv},
+  url={https://arxiv.org/abs/2306.01116},
+  year={2023}
+}
+"""
 
 from typing import Optional, Tuple
 from dataclasses import dataclass
