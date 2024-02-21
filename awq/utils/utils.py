@@ -7,6 +7,7 @@ def get_module_by_name_suffix(model, module_name: str):
         if name.endswith(module_name):
             return module
 
+
 def simple_dispatch_model(model, device_map):
     from accelerate.hooks import add_hook_to_module, AlignDevicesHook
 
@@ -17,7 +18,10 @@ def simple_dispatch_model(model, device_map):
         return model
 
     tied_params = accelerate.utils.modeling.find_tied_parameters(model)
-    if set(device_map.values()) == {"cpu"} or set(device_map.values()) == {"cpu", "disk"}:
+    if set(device_map.values()) == {"cpu"} or set(device_map.values()) == {
+        "cpu",
+        "disk",
+    }:
         main_device = "cpu"
     else:
         main_device = [d for d in device_map.values() if d not in ["cpu", "disk"]][0]
@@ -26,10 +30,14 @@ def simple_dispatch_model(model, device_map):
     prev_hook = None
     for idx, (n, d) in enumerate(cpu_offload_group):
         m = get_module_by_name_suffix(model, n)
-        _, prev_hook = accelerate.cpu_offload_with_hook(m, execution_device=main_device, prev_module_hook=prev_hook)
+        _, prev_hook = accelerate.cpu_offload_with_hook(
+            m, execution_device=main_device, prev_module_hook=prev_hook
+        )
     # set first cpu offload module's prev_module_hook to the last cpu offload module's hook
     if len(cpu_offload_group) > 1:
-        get_module_by_name_suffix(model, cpu_offload_group[0][0])._hf_hook.prev_module_hook = prev_hook
+        get_module_by_name_suffix(
+            model, cpu_offload_group[0][0]
+        )._hf_hook.prev_module_hook = prev_hook
 
     for n, d in device_map.items():
         m = get_module_by_name_suffix(model, n)

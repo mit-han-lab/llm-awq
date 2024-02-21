@@ -206,6 +206,7 @@ if __name__ == "__main__":
     # Optimize AWQ quantized model
     if args.precision == "W4A16" and args.model_type.lower() == "llama":
         from tinychat.modules import make_quant_norm, make_quant_attn, make_fused_mlp
+
         make_quant_attn(model, args.device)
         make_quant_norm(model)
         make_fused_mlp(model)
@@ -233,6 +234,8 @@ if __name__ == "__main__":
             stop_token_ids=stop_token_ids,
         )
         outputs = stream_output(output_stream)
-        if args.single_round is not True and args.max_seq_len > 512:      # Only memorize previous conversations when kv_cache_size > 512    
+        if (
+            args.single_round is not True and args.max_seq_len > 512
+        ):  # Only memorize previous conversations when kv_cache_size > 512
             model_prompter.update_template(outputs)
         count += 1
