@@ -22,6 +22,7 @@ def auto_parallel(args):
     else:
         cuda_visible_devices = list(range(8))
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-        [str(dev) for dev in cuda_visible_devices[:n_gpu]])
+        [str(dev) for dev in cuda_visible_devices[:n_gpu]]
+    )
     print("CUDA_VISIBLE_DEVICES: ", os.environ["CUDA_VISIBLE_DEVICES"])
     return cuda_visible_devices

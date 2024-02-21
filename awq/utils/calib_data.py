@@ -27,4 +27,6 @@ def get_calib_dataset(data="pileval", tokenizer=None, n_samples=512, block_size=
     cat_samples = torch.cat(samples, dim=1)
     n_split = cat_samples.shape[1] // block_size
     print(f" * Split into {n_split} blocks")
-    return [cat_samples[:, i*block_size:(i+1)*block_size] for i in range(n_split)]
+    return [
+        cat_samples[:, i * block_size : (i + 1) * block_size] for i in range(n_split)
+    ]
