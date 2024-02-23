@@ -42,11 +42,11 @@ The current release supports:
 
 * TinyChat with VILA-13B on RTX 4090 (multi-image inputs supported):
 
-![TinyChat with VILA on 4090](./tinychat/figures/4090_vila_example.gif)
+![TinyChat with VILA on 4090](./figures/4090_vila_example.gif)
 
 * TinyChat with VILA-7B/13B on Jetson Orin:
 
-![TinyChat with VILA on Orin](./tinychat/figures/orin_vila_example.gif)
+![TinyChat with VILA on Orin](./figures/orin_vila_example.gif)
 
 
 ## Benchmarks
