@@ -1,4 +1,27 @@
 from typing import List
+from tinychat.utils.constants import (
+    LLAVA_DEFAULT_IMAGE_TOKEN,
+    LLAVA_DEFAULT_IMAGE_PATCH_TOKEN,
+)
+
+
+def get_image_token(model, model_name):
+    if "llava" in model_name.lower():
+        return LLAVA_DEFAULT_IMAGE_TOKEN + "\\n "
+    elif "vila" in model_name.lower():
+        vision_config = model.get_vision_tower().vision_tower.config
+        image_token_len = (vision_config.image_size // vision_config.patch_size) ** 2
+        if (
+            "downsample" in model.config.mm_projector_type
+            or "ds" in model.config.mm_projector_type
+        ):
+            image_token_len = image_token_len // 4
+        if "p32" in model_name:  # extra leading patches
+            image_token_len += 32
+        elif "se" in model.config.mm_projector_type:
+            image_token_len += 2
+        return LLAVA_DEFAULT_IMAGE_PATCH_TOKEN * image_token_len + "\\n "
+    return ""
 
 
 class BasePrompter:
@@ -92,6 +115,16 @@ class OneShotBasePrompter(BasePrompter):
         self.update_template(self.assistant_example)
 
 
+class EmptyPrompter(BasePrompter):
+    def __init__(self):
+        system_inst = ""
+        role1 = ""
+        role2 = ""
+        sen_spliter = ""
+        qa_spliter = "</s>"
+        super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter)
+
+
 class VicunaPrompter(BasePrompter):
     def __init__(self):
         system_inst = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions."
@@ -134,6 +167,16 @@ class Llama2Prompter(OneShotBasePrompter):
         super().__init__(
             oneshot_example, system_inst, role1, role2, sen_spliter, qa_spliter
         )
+
+
+class LlavaLlamaPrompter(BasePrompter):
+    def __init__(self):
+        system_inst = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions."
+        role1 = "USER"
+        role2 = "ASSISTANT"
+        sen_spliter = " "
+        qa_spliter = "</s>"
+        super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter)
 
 
 class FalconSimplePrompter(BasePrompter):
@@ -190,17 +233,21 @@ class MPTChatPrompter(BasePrompter):
         super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, decorator)
 
 
-def get_prompter(model_type, model_path="", short_prompt=False):
+def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=False):
+    if empty_prompt:
+        return EmptyPrompter()
     if model_type.lower() == "llama":
-        if "vicuna" in model_path:
+        if "vicuna" in model_path.lower():
             return VicunaPrompter()
+        elif "llava" in model_path.lower() or "vila" in model_path.lower():
+            return LlavaLlamaPrompter()
         else:
             return Llama2Prompter(short_prompt)
     elif model_type.lower() == "falcon":
         # return FalconPrompter()
         return FalconSimplePrompter()
     elif model_type.lower() == "mpt":
-        if "mpt" and "chat" in model_path:
+        if "mpt" and "chat" in model_path.lower():
             return MPTChatPrompter()
         else:
             return MPTPrompter()

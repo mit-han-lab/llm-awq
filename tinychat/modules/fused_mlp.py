@@ -18,10 +18,10 @@ class QuantLlamaMLP(nn.Module):
         super().__init__()
         self.register_buffer("gate_proj_qweight", gate_proj.qweight)
         self.register_buffer("gate_proj_scales", gate_proj.scales)
-        self.register_buffer("gate_proj_qzeros", gate_proj.qzeros)
+        self.register_buffer("gate_proj_scaled_zeros", gate_proj.scaled_zeros)
         self.register_buffer("up_proj_qweight", up_proj.qweight)
         self.register_buffer("up_proj_scales", up_proj.scales)
-        self.register_buffer("up_proj_qzeros", up_proj.qzeros)
+        self.register_buffer("up_proj_scaled_zeros", up_proj.scaled_zeros)
 
         self.in_features = gate_proj.in_features
         self.intermediate_size = gate_proj.out_features
@@ -34,46 +34,52 @@ class QuantLlamaMLP(nn.Module):
         return self.down_proj(self.our_llama_mlp(x))
 
     def our_llama_mlp(self, x):
-        out_shape = x.shape[:-1] + (self.intermediate_size,)
-        x = x.reshape(-1, x.shape[-1])
-
-        if x.shape[0] <= 8:
-            gate_output = awq_inference_engine.gemv_forward_cuda(
+        # out_shape = x.shape[:-1] + (self.intermediate_size,)
+        # x = x.reshape(-1, x.shape[-1])
+        if x.numel() // x.shape[-1] < 8:
+            gate_output = awq_inference_engine.gemv_forward_cuda_new(
                 x,
                 self.gate_proj_qweight,
                 self.gate_proj_scales,
-                self.gate_proj_qzeros,
+                self.gate_proj_scaled_zeros,
+                x.numel() // x.shape[-1],
+                self.intermediate_size,
+                self.in_features,
                 self.down_proj.group_size,
             )
             gate_output = F.silu(gate_output)
-            up_output = awq_inference_engine.gemv_forward_cuda(
+            up_output = awq_inference_engine.gemv_forward_cuda_new(
                 x,
                 self.up_proj_qweight,
                 self.up_proj_scales,
-                self.up_proj_qzeros,
+                self.up_proj_scaled_zeros,
+                x.numel() // x.shape[-1],
+                self.intermediate_size,
+                self.in_features,
                 self.down_proj.group_size,
             )
         else:
-            gate_output = awq_inference_engine.gemm_forward_cuda(
+            # num_mn_tiles = (x.shape[0] // 32) * (self.intermediate_size // 128)
+            # cuda_Semaphores_gate = torch.empty(num_mn_tiles).int().to(x.device)
+            # cuda_Semaphores_up = torch.empty(num_mn_tiles).int().to(x.device)
+            gate_output = awq_inference_engine.gemm_forward_cuda_new(
                 x,
                 self.gate_proj_qweight,
                 self.gate_proj_scales,
-                self.gate_proj_qzeros,
-                self.down_proj.group_size,
-                self.split_k_iters,
+                self.gate_proj_scaled_zeros - 8 * self.gate_proj_scales,
+                # self.gate_cuda_semaphores
             )
-            gate_output = F.silu(gate_output)
-            up_output = awq_inference_engine.gemm_forward_cuda(
+            up_output = awq_inference_engine.gemm_forward_cuda_new(
                 x,
                 self.up_proj_qweight,
                 self.up_proj_scales,
-                self.up_proj_qzeros,
-                self.down_proj.group_size,
-                self.split_k_iters,
+                self.up_proj_scaled_zeros - 8 * self.up_proj_scales,
+                # self.up_cuda_semaphores
             )
+            gate_output = F.silu(gate_output)
 
         c = gate_output * up_output
-        c = c.reshape(out_shape)
+        # c = c.reshape(out_shape)
         return c
 
 

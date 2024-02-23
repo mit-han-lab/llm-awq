@@ -16,9 +16,12 @@ dependencies = [
     "accelerate", "sentencepiece", "tokenizers>=0.12.1",
     "torch>=2.0.0", "torchvision", 
     "transformers>=4.32.0", 
-    "lm_eval", "texttable",
+    "lm_eval==0.3.0", "texttable",
     "toml", "attributedict",
-    "protobuf"
+    "protobuf",
+    "gradio==3.35.2", "gradio_client==0.2.9",
+    "fastapi", "uvicorn",
+    "pydantic==1.10.14"
 ]
 
 [tool.setuptools.packages.find]

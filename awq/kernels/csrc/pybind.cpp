@@ -4,6 +4,8 @@
 #include "layernorm/layernorm.h"
 #include "quantization/gemm_cuda.h"
 #include "quantization/gemv_cuda.h"
+#include "quantization_new/gemm/gemm_cuda.h"
+#include "quantization_new/gemv/gemv_cuda.h"
 #include "position_embedding/pos_encoding.h"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
@@ -11,6 +13,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("layernorm_forward_cuda", &layernorm_forward_cuda, "FasterTransformer layernorm kernel");
     m.def("gemm_forward_cuda", &gemm_forward_cuda, "Quantized GEMM kernel.");
     m.def("gemv_forward_cuda", &gemv_forward_cuda, "Quantized GEMV kernel.");
+    m.def("gemm_forward_cuda_new", &gemm_forward_cuda_new, "New quantized GEMM kernel.");
+    m.def("gemv_forward_cuda_new", &gemv_forward_cuda_new, "New quantized GEMV kernel.");
     m.def("rotary_embedding_neox", &rotary_embedding_neox, "Apply GPT-NeoX style rotary embedding to query and key");
     m.def("single_query_attention", &single_query_attention, "Attention with a single query",
           py::arg("q"), py::arg("k"), py::arg("v"), py::arg("k_cache"), py::arg("v_cache"),

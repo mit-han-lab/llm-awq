@@ -23,6 +23,48 @@ def calculate_zeros_width(in_features, group_size=128, pack_num=8):
     return base_width
 
 
+def pack_intweight(unpacked_qweight, interleave, kstride):
+    # unpacked_qweight: [N, K]
+    N = unpacked_qweight.shape[0]
+    K = unpacked_qweight.shape[1]
+
+    Packed_Kernel = unpacked_qweight.cpu().numpy().reshape(N, K // 32, 32)
+    # np.arange(32).reshape(4, 4, 2).transpose(1, 0, 2) => [0, 1, 8, 9, 16, 17, 24, 25, ...]
+    Packed_Kernel = Packed_Kernel.reshape(N, K // 32, 4, 4, 2).transpose(0, 1, 3, 2, 4)
+    Packed_Kernel = Packed_Kernel.reshape(N, K // 32, 32)
+
+    # reorder each 8 weights for fast dequantization
+    # [0, 1, 2, 3, 4, 5, 6, 7] => [0, 2, 4, 6, 1, 3, 5, 7]
+    Packed_Kernel = Packed_Kernel.reshape(N, K // 32, 4, 8)
+    Packed_Kernel = Packed_Kernel.reshape(N, K // 32, 4, 4, 2).transpose(0, 1, 2, 4, 3)
+    Packed_Kernel = Packed_Kernel.reshape(N, K)
+
+    # interleaving every four rows
+    Packed_Kernel = Packed_Kernel.reshape(
+        N // interleave, interleave, K // kstride, kstride
+    )
+    # N // 4, K // 64, 4, 64
+    Packed_Kernel = Packed_Kernel.transpose(0, 2, 1, 3)
+    Packed_Kernel = Packed_Kernel.reshape(
+        N // interleave, K // kstride, kstride, interleave
+    )
+    # Packing -> (N // 4, K // 64, 64)
+    Packed_Kernel = (
+        Packed_Kernel[..., 0]
+        | (Packed_Kernel[..., 1] << 4)
+        | (Packed_Kernel[..., 2] << 8)
+        | (Packed_Kernel[..., 3] << 12)
+    )
+    # reshape to (N // 4, K), FP16 format
+    Packed_Kernel = Packed_Kernel.reshape(N // interleave, K)
+    qweight = (
+        torch.tensor(Packed_Kernel.astype("int16"))
+        .to(unpacked_qweight.device)
+        .contiguous()
+    )
+    return qweight
+
+
 class ScaledActivation(nn.Module):
     def __init__(self, module, scales):
         super().__init__()
@@ -45,22 +87,22 @@ class WQLinear(nn.Module):
         self.w_bit = w_bit
         self.group_size = group_size if group_size != -1 else in_features
         self.split_k_iters = 8
+        self.interleave = 4
         # quick sanity check (make sure aligment)
         assert self.in_features % self.group_size == 0
         assert out_features % (32 // self.w_bit) == 0
         pack_num = 32 // self.w_bit
-        # TODO (Haotian): a function for buffer shape calculation
+        int16_pack_num = 16 // self.w_bit
+
+        assert out_features % (self.interleave) == 0
         self.register_buffer(
             "qweight",
             torch.zeros(
-                (out_features, in_features // pack_num), dtype=torch.int32, device=dev
-            ),
-        )
-        self.register_buffer(
-            "qzeros",
-            torch.zeros(
-                (out_features, calculate_zeros_width(in_features, self.group_size)),
-                dtype=torch.int32,
+                (
+                    out_features // self.interleave,
+                    in_features // int16_pack_num * self.interleave,
+                ),
+                dtype=torch.int16,
                 device=dev,
             ),
         )
@@ -68,13 +110,25 @@ class WQLinear(nn.Module):
             "scales",
             torch.zeros(
                 (
-                    out_features,
                     calculate_zeros_width(in_features, self.group_size) * pack_num,
+                    out_features,
                 ),
                 dtype=torch.float16,
                 device=dev,
             ),
         )
+        self.register_buffer(
+            "scaled_zeros",
+            torch.zeros(
+                (
+                    calculate_zeros_width(in_features, self.group_size) * pack_num,
+                    out_features,
+                ),
+                dtype=torch.float16,
+                device=dev,
+            ),
+        )
+
         if bias:
             self.register_buffer(
                 "bias", torch.zeros((out_features), dtype=torch.float16, device=dev)
@@ -112,7 +166,7 @@ class WQLinear(nn.Module):
         )
         qscales[:, : scales.shape[1]] = scales
         # awq_linear.scales = scales.clone().half()
-        awq_linear.scales = qscales
+        awq_linear.scales = qscales.transpose(1, 0).contiguous()
         if linear.bias is not None:
             awq_linear.bias = linear.bias.clone().half()
 
@@ -121,71 +175,50 @@ class WQLinear(nn.Module):
             intweight.append(
                 torch.round(
                     (linear.weight.data[:, idx] + scale_zeros[:, idx // group_size])
-                    / awq_linear.scales[:, idx // group_size]
+                    / qscales[:, idx // group_size]
                 ).to(torch.int)[:, None]
             )
         intweight = torch.cat(intweight, dim=1)
         # intweight = intweight.t().contiguous()
         intweight = intweight.to(dtype=torch.int32)
-        qweight = torch.zeros(
-            (intweight.shape[0], intweight.shape[1] // 32 * awq_linear.w_bit),
-            dtype=torch.int32,
-            device=intweight.device,
+        awq_linear.qweight = pack_intweight(
+            intweight.contiguous(), interleave=4, kstride=64
         )
-
-        for col in range(intweight.shape[1] // pack_num):
-            if awq_linear.w_bit == 4:
-                # order_map = [0, 2, 4, 6, 1, 3, 5, 7]
-                order_map = [0, 1, 2, 3, 4, 5, 6, 7]
-            else:
-                raise NotImplementedError("Only 4-bit are supported for now.")
-            for i in range(pack_num):
-                qweight_col = intweight[:, col * pack_num + order_map[i]]
-                qweight[:, col] |= qweight_col << (i * awq_linear.w_bit)
-        awq_linear.qweight = qweight
 
         zeros = zeros.to(dtype=torch.int32)
-        qzeros = torch.zeros(
-            (zeros.shape[0], calculate_zeros_width(linear.in_features, group_size)),
-            dtype=torch.int32,
-            device=zeros.device,
-        )
+        scaled_zeros = torch.zeros_like(qscales)
+        # scaled_zeros[:, :scales.shape[1]] = -(qscales[:, :scales.shape[1]] * (zeros.to(torch.float32) - 8.0)).to(torch.float16)
+        scaled_zeros[:, : scales.shape[1]] = -(
+            qscales[:, : scales.shape[1]] * (zeros.to(torch.float32))
+        ).to(torch.float16)
+        awq_linear.scaled_zeros = scaled_zeros.transpose(1, 0).contiguous()
 
-        for col in range((zeros.shape[1] + pack_num - 1) // pack_num):
-            if awq_linear.w_bit == 4:
-                # order_map = [0, 2, 4, 6, 1, 3, 5, 7]
-                order_map = [0, 1, 2, 3, 4, 5, 6, 7]
-            else:
-                raise NotImplementedError("Only 4-bit are supported for now.")
-            for i in range(pack_num):
-                if col * pack_num + order_map[i] >= zeros.shape[1]:
-                    continue
-                qzero_col = zeros[:, col * pack_num + order_map[i]]
-                qzeros[:, col] |= qzero_col << (i * awq_linear.w_bit)
-        awq_linear.qzeros = qzeros
         return awq_linear
 
     @torch.no_grad()
     def forward(self, x):
-        out_shape = x.shape[:-1] + (self.out_features,)
-        inputs = x.reshape(-1, x.shape[-1])
-        if inputs.shape[0] > 8:
-            out = awq_inference_engine.gemm_forward_cuda(
+        # out_shape = x.shape[:-1] + (self.out_features,)
+        # inputs = x.reshape(-1, x.shape[-1])
+        inputs = x
+        if inputs.numel() / inputs.shape[-1] < 8:
+            out = awq_inference_engine.gemv_forward_cuda_new(
                 inputs,
                 self.qweight,
                 self.scales,
-                self.qzeros,
+                self.scaled_zeros,
+                inputs.numel() // inputs.shape[-1],
+                self.out_features,
+                self.in_features,
                 self.group_size,
-                self.split_k_iters,
             )
         else:
-            out = awq_inference_engine.gemv_forward_cuda(
-                inputs, self.qweight, self.scales, self.qzeros, self.group_size
-            )
+            out = awq_inference_engine.gemm_forward_cuda_new(
+                inputs, self.qweight, self.scales, self.scaled_zeros
+            )  # - 8.0 * self.scales)
         out = out + self.bias if self.bias is not None else out
         # print(out)
         # assert 0
-        return out.reshape(out_shape)
+        return out
 
     def extra_repr(self) -> str:
         return (

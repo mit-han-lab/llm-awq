@@ -23,7 +23,6 @@ from datasets import load_dataset
 from torch import nn
 import tqdm
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_path", type=str, help="path of the hf model")
 parser.add_argument("--batch_size", type=int, default=1, help="batch size")
@@ -87,15 +86,26 @@ def build_model_and_enc(model_path):
     print(f"* Building model {model_path}")
 
     # all hf model
-    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
-    if "mpt" in config.__class__.__name__.lower():
-        enc = AutoTokenizer.from_pretrained(
-            config.tokenizer_name, trust_remote_code=True
+    if "llava" in model_path.lower() or "vila" in model_path.lower():
+        from llava.model.builder import load_pretrained_model
+        from llava.mm_utils import get_model_name_from_path
+
+        enc, model, image_processor, context_len = load_pretrained_model(
+            model_path=model_path,
+            model_base=None,
+            model_name=get_model_name_from_path(model_path),
+            device="cpu",
         )
     else:
-        enc = AutoTokenizer.from_pretrained(
-            model_path, use_fast=False, trust_remote_code=True
-        )
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+        if "mpt" in config.__class__.__name__.lower():
+            enc = AutoTokenizer.from_pretrained(
+                config.tokenizer_name, trust_remote_code=True
+            )
+        else:
+            enc = AutoTokenizer.from_pretrained(
+                model_path, use_fast=False, trust_remote_code=True
+            )
 
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
@@ -137,9 +147,10 @@ def build_model_and_enc(model_path):
         args.run_awq &= not args.load_awq  # if load_awq, no need to run awq
         # Init model on CPU:
         kwargs = {"torch_dtype": torch.float16, "low_cpu_mem_usage": True}
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path, config=config, trust_remote_code=True, **kwargs
-        )
+        if not ("llava" in model_path.lower() or "vila" in model_path.lower()):
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path, config=config, trust_remote_code=True, **kwargs
+            )
 
         model.eval()
 
@@ -178,6 +189,9 @@ def build_model_and_enc(model_path):
             elif args.q_backend == "real":  # real quantization
                 real_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)
                 if args.dump_quant:
+                    if not args.dump_quant.endswith("v2.pt"):
+                        print("[Info] Auto-change the dump_quant file name to *v2.pt")
+                        args.dump_quant = args.dump_quant.replace(".pt", "-v2.pt")
                     dirpath = os.path.dirname(args.dump_quant)
                     os.makedirs(dirpath, exist_ok=True)
 
@@ -272,12 +286,12 @@ def main():
 
             print(evaluator.make_table(results))
 
-            if args.output_path is not None:
-                os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
-                # otherwise cannot save
-                results["config"]["model"] = args.model_path
-                with open(args.output_path, "w") as f:
-                    json.dump(results, f, indent=2)
+        if args.output_path is not None:
+            os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
+            # otherwise cannot save
+            results["config"]["model"] = args.model_path
+            with open(args.output_path, "w") as f:
+                json.dump(results, f, indent=2)
 
 
 if __name__ == "__main__":

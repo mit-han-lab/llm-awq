@@ -65,7 +65,6 @@ def auto_clip_layer(
 
 @torch.no_grad()
 def auto_clip_block(module, w_bit, q_config, input_feat):
-
     named_linears = {
         name: m for name, m in module.named_modules() if isinstance(m, nn.Linear)
     }

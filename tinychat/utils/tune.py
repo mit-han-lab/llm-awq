@@ -13,6 +13,21 @@ def device_warmup(device: str):
         torch.mm(warm_up, warm_up)
 
 
+def tune_llava_patch_embedding(vision_tower, device):
+    # run the llava_patch_embedding layer to pre-tune the kernel configuration
+    # Without this pre-tuning, the embedding layer can cause significant slowdown due to cuDNN tuning.
+    device = vision_tower.device
+    patch_embedding = vision_tower.vision_tower.vision_model.embeddings.patch_embedding
+    patch_embedding = patch_embedding.to(device)
+    image = (
+        torch.randn((1, patch_embedding.in_channels, 336, 336))
+        .to(device)
+        .to(patch_embedding.weight.dtype)
+    )
+    for i in range(100):
+        patch_embedding(image)
+
+
 def _time_module(module, inputs, measure_iters=1000):
     time_lis = []
     # Warmup

@@ -4,10 +4,12 @@ import tqdm
 import gc
 import functools
 from collections import defaultdict
+from typing import List
 
 from transformers.models.bloom.modeling_bloom import BloomForCausalLM
 from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
+from tinychat.models import LlavaLlamaForCausalLM
 
 from .auto_scale import auto_scale_block, apply_scale
 from .auto_clip import auto_clip_block, apply_clip
@@ -21,6 +23,9 @@ def get_named_linears(module):
 
 def get_blocks(model):
     if model.__class__.__name__ == "LlamaForCausalLM":
+        layers = model.model.layers
+    elif model.__class__.__name__ == "LlavaLlamaForCausalLM":
+        # layers = [model.model.layers, model.model.vision_tower.vision_tower.vision_model.encoder.layers]
         layers = model.model.layers
     elif isinstance(model, OPTForCausalLM):
         layers = model.model.decoder.layers
@@ -42,6 +47,9 @@ def get_blocks(model):
 def move_embed(model, device):
     if isinstance(model, LlamaForCausalLM):
         model.model.embed_tokens = model.model.embed_tokens.to(device)
+    elif isinstance(model, LlavaLlamaForCausalLM):
+        model.model.embed_tokens = model.model.embed_tokens.to(device)
+        model.model.vision_tower.vision_tower.vision_model.embeddings.to(device)
     elif isinstance(model, OPTForCausalLM):
         model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.to(device)
         model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(
@@ -88,6 +96,7 @@ def run_awq(
     if "bigcode" in str(model.__class__).lower():
         # otherwise attention_mask will always be on cpu.
         model.transformer.bias = model.transformer.bias.to("cuda")
+
     layers = get_blocks(model)
 
     samples = get_calib_dataset(
