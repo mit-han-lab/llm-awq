@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, modeling_utils
 from attributedict.collections import AttributeDict
-from tinychat.stream_generators import StreamGenerator, FalconStreamGenerator
+from tinychat.stream_generators import StreamGenerator
 import tinychat.utils.constants
 from tinychat.utils.load_quant import load_awq_model, load_awq_llama_fast
 from tinychat.utils.prompt_templates import get_prompter, get_stop_token_ids
@@ -71,14 +71,10 @@ def stream_output(output_stream):
         print("=" * 50)
         print("Speed of Inference")
         print("-" * 50)
-        # print(f"Context Stage    : {context_time/context_tokens * 1000:.2f} ms/token")
         print(
             f"Generation Stage : {np.average(generation_time_list) * 1000:.2f} ms/token"
         )
-        # print(f"Average Speed    : {average_speed * 1000:.2f} ms/token")
         print("=" * 50)
-        # print("token num:", total_tokens)
-        # print("Model total Time = ", (context_time + np.sum(generation_time_list))*1000, "ms" )
     return " ".join(output_text)
 
 
@@ -205,11 +201,10 @@ if __name__ == "__main__":
 
     # Optimize AWQ quantized model
     if args.precision == "W4A16" and args.model_type.lower() == "llama":
-        from tinychat.modules import make_quant_norm, make_quant_attn, make_fused_mlp
+        from tinychat.modules import make_quant_norm, make_quant_attn
 
         make_quant_attn(model, args.device)
         make_quant_norm(model)
-        make_fused_mlp(model)
 
     if args.max_seq_len <= 1024:
         short_prompt = True

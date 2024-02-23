@@ -45,7 +45,7 @@ class QuantLlamaRotaryEmbedding(nn.Module):
 
         freqs = torch.einsum("i,j->ij", t, self.inv_freq)
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
+        # emb = torch.cat((freqs, freqs), dim=-1)
 
         cos = freqs.cos()
         sin = freqs.sin()
@@ -315,8 +315,12 @@ def make_quant_attn(model, dev):
         v_proj = m.v_proj
 
         qweights = torch.cat([q_proj.qweight, k_proj.qweight, v_proj.qweight], dim=0)
-        qzeros = torch.cat([q_proj.qzeros, k_proj.qzeros, v_proj.qzeros], dim=0)
-        scales = torch.cat([q_proj.scales, k_proj.scales, v_proj.scales], dim=0)
+        scaled_zeros = torch.cat(
+            [q_proj.scaled_zeros, k_proj.scaled_zeros, v_proj.scaled_zeros], dim=1
+        ).contiguous()
+        scales = torch.cat(
+            [q_proj.scales, k_proj.scales, v_proj.scales], dim=1
+        ).contiguous()
         # g_idx = torch.cat([q_proj.g_idx, k_proj.g_idx, v_proj.g_idx], dim=0)
         g_idx = None
         bias = (
@@ -334,13 +338,12 @@ def make_quant_attn(model, dev):
             q_proj.qweight.device,
         )
         qkv_layer.qweight = qweights
-        qkv_layer.qzeros = qzeros
+        qkv_layer.scaled_zeros = scaled_zeros
         qkv_layer.scales = scales
 
         qkv_layer.bias = bias
         qkv_layer.split_k_iters = q_proj.split_k_iters
         # We're dropping the rotary embedding layer m.rotary_emb here. We don't need it in the triton branch.
-
         if isinstance(m, LlamaAttention):
             attn = QuantLlamaAttention(
                 m.hidden_size, m.num_heads, qkv_layer, m.o_proj, dev

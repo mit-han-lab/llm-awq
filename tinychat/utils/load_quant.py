@@ -13,6 +13,16 @@ from tqdm import tqdm
 
 import tinychat.utils.constants
 
+version_message = """
+[Warning] The awq quantized checkpoint seems to be in v1 format. 
+If the model cannot be loaded successfully, please use the latest awq library to re-quantized the model, or repack the current checkpoint with tinychat/offline-weight-repacker.py
+"""
+
+
+def ckpt_version_check(quant_path):
+    if not quant_path.endswith("v2.pt"):
+        print(version_message)
+
 
 def mem_efficient_load_checkpoint(
     model: nn.Module,
@@ -65,6 +75,7 @@ def load_awq_model(model, checkpoint, w_bit, group_size, device):
             checkpoint,
         ).to(device)
     else:
+        ckpt_version_check(checkpoint)
         pbar = tqdm(range(1))
         pbar.set_description("Loading checkpoint")
         for i in pbar:
@@ -77,6 +88,7 @@ def load_awq_model(model, checkpoint, w_bit, group_size, device):
                     "BloomBlock",
                     "MPTBlock",
                     "DecoderLayer",
+                    "CLIPEncoderLayer",
                 ],
             ).to(device)
     return model
@@ -144,6 +156,7 @@ def load_awq_llama_fast(model, checkpoint, w_bit, group_size, device):
             checkpoint,
         )
     else:
+        ckpt_version_check(checkpoint)
         pbar = tqdm(range(1))
         pbar.set_description("Loading checkpoint")
         for i in pbar:

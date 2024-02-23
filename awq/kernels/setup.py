@@ -31,6 +31,8 @@ setup(
                 "csrc/pybind.cpp",
                 "csrc/quantization/gemm_cuda_gen.cu",
                 "csrc/quantization/gemv_cuda.cu",
+                "csrc/quantization_new/gemv/gemv_cuda.cu",
+                "csrc/quantization_new/gemm/gemm_cuda.cu",
                 "csrc/layernorm/layernorm.cu",
                 "csrc/position_embedding/pos_encoding_kernels.cu",
                 "csrc/attention/ft_attention.cpp",
