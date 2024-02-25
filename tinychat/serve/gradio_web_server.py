@@ -39,7 +39,7 @@ from tinychat.utils.log_utils import (
 import hashlib
 
 IMAGE_BOX_NUM = 3
-BUTTON_LIST_LEN = 5
+BUTTON_LIST_LEN = 2
 
 logger = build_logger("gradio_web_server", "gradio_web_server.log")
 
@@ -114,34 +114,34 @@ def load_demo_refresh_model_list(prompt_style_btn, request: gr.Request):
     return state, dropdown_update
 
 
-def vote_last_response(state, vote_type, model_selector, request: gr.Request):
-    with open(get_conv_log_filename(), "a") as fout:
-        data = {
-            "tstamp": round(time.time(), 4),
-            "type": vote_type,
-            "model": model_selector,
-            "state": state.dict(),
-            "ip": request.client.host,
-        }
-        fout.write(json.dumps(data) + "\n")
+# def vote_last_response(state, vote_type, model_selector, request: gr.Request):
+#     with open(get_conv_log_filename(), "a") as fout:
+#         data = {
+#             "tstamp": round(time.time(), 4),
+#             "type": vote_type,
+#             "model": model_selector,
+#             "state": state.dict(),
+#             "ip": request.client.host,
+#         }
+#         fout.write(json.dumps(data) + "\n")
 
 
-def upvote_last_response(state, model_selector, request: gr.Request):
-    logger.info(f"upvote. ip: {request.client.host}")
-    vote_last_response(state, "upvote", model_selector, request)
-    return ("",) + (disable_btn,) * 3
+# def upvote_last_response(state, model_selector, request: gr.Request):
+#     logger.info(f"upvote. ip: {request.client.host}")
+#     vote_last_response(state, "upvote", model_selector, request)
+#     return ("",) + (disable_btn,) * 3
 
 
-def downvote_last_response(state, model_selector, request: gr.Request):
-    logger.info(f"downvote. ip: {request.client.host}")
-    vote_last_response(state, "downvote", model_selector, request)
-    return ("",) + (disable_btn,) * 3
+# def downvote_last_response(state, model_selector, request: gr.Request):
+#     logger.info(f"downvote. ip: {request.client.host}")
+#     vote_last_response(state, "downvote", model_selector, request)
+#     return ("",) + (disable_btn,) * 3
 
 
-def flag_last_response(state, model_selector, request: gr.Request):
-    logger.info(f"flag. ip: {request.client.host}")
-    vote_last_response(state, "flag", model_selector, request)
-    return ("",) + (disable_btn,) * 3
+# def flag_last_response(state, model_selector, request: gr.Request):
+#     logger.info(f"flag. ip: {request.client.host}")
+#     vote_last_response(state, "flag", model_selector, request)
+#     return ("",) + (disable_btn,) * 3
 
 
 def regenerate(state, image_process_mode, request: gr.Request):
@@ -153,7 +153,6 @@ def regenerate(state, image_process_mode, request: gr.Request):
     state.skip_next = False
     return (
         (state, state.to_gradio_chatbot(), "")
-        + (None,) * IMAGE_BOX_NUM
         + (disable_btn,) * BUTTON_LIST_LEN
     )
 
@@ -352,9 +351,9 @@ def http_bot(
         yield (
             state,
             state.to_gradio_chatbot(),
-            disable_btn,
-            disable_btn,
-            disable_btn,
+            # disable_btn,
+            # disable_btn,
+            # disable_btn,
             enable_btn,
             enable_btn,
         )
@@ -395,9 +394,9 @@ def http_bot(
         yield (
             state,
             state.to_gradio_chatbot(),
-            disable_btn,
-            disable_btn,
-            disable_btn,
+            # disable_btn,
+            # disable_btn,
+            # disable_btn,
             enable_btn,
             enable_btn,
         )
@@ -427,9 +426,9 @@ def http_bot(
         yield (
             state,
             state.to_gradio_chatbot(),
-            disable_btn,
-            disable_btn,
-            disable_btn,
+            # disable_btn,
+            # disable_btn,
+            # disable_btn,
             enable_btn,
             enable_btn,
         )
@@ -472,9 +471,9 @@ def http_bot(
                         LLAVA_DEFAULT_IM_TOKEN_PLACE_HOLDER, IMAGE_TOKEN_VIS
                     )
                     yield (state, ret) + (
-                        disable_btn,
-                        disable_btn,
-                        disable_btn,
+                        # disable_btn,
+                        # disable_btn,
+                        # disable_btn,
                         enable_btn,
                         enable_btn,
                     )
@@ -483,9 +482,9 @@ def http_bot(
     except requests.exceptions.RequestException as e:
         state.messages[-1][-1] = server_error_msg
         yield (state, state.to_gradio_chatbot()) + (
-            disable_btn,
-            disable_btn,
-            disable_btn,
+            # disable_btn,
+            # disable_btn,
+            # disable_btn,
             enable_btn,
             enable_btn,
         )
@@ -515,7 +514,7 @@ def http_bot(
 
 title_markdown = """
 # VILA: On Pre-training for Visual Language Models
-[\[Paper\]](https://arxiv.org/abs/2312.07533)  [\[Github (coming soon)\]](https://github.com/Efficient-Large-Model/VILA)
+[\[Paper\]](https://arxiv.org/abs/2312.07533)  [\[Github\]](https://github.com/Efficient-Large-Model/VILA)
 ### Powered by [TinyChat](https://github.com/mit-han-lab/llm-awq/tree/main/tinychat) with 4-bit [AWQ](https://arxiv.org/abs/2306.00978).
 """
 
@@ -573,13 +572,17 @@ def build_demo(embed_mode):
                 )
                 # imagebox_out = gr.Image(height=150)
                 with gr.Row():
-                    with gr.Column(scale=8):
+                    with gr.Column(scale=5):
                         textbox.render()
-                    with gr.Column(scale=1, min_width=50):
+                    with gr.Column(scale=1, min_width=100):
                         submit_btn = gr.Button(value="Send", variant="primary")
-                    with gr.Column(scale=1, min_width=50):
+                    with gr.Column(scale=1, min_width=100):
                         clear_btn = gr.Button(
                             value="🗑️  Clear", variant="primary", interactive=False
+                        )
+                    with gr.Column(scale=1, min_width=100):
+                        regenerate_btn = gr.Button(
+                            value="🔄  Retry", variant="primary", interactive=False
                         )
                 with gr.Row():
                     gr.Markdown(
@@ -667,7 +670,23 @@ def build_demo(embed_mode):
                         ],
                     ],
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
-                    label="Multi-image Example",
+                    label="Multi-image Example 1",
+                    fn=clear_after_click_example_3_image,
+                    outputs=[state, imagebox, imagebox_2, imagebox_3, prompt_style_btn],
+                    run_on_click=True,
+                )
+
+                gr.Examples(
+                    examples=[
+                        [
+                            f"{cur_dir}/examples/golf/Golfman1.png",
+                            f"{cur_dir}/examples/golf/Golfman2.png",
+                            f"{cur_dir}/examples/golf/Golfman3.png",
+                            "<image> <image> <image> What happens to the man after hitting the ball? And why does it happen?",
+                        ],
+                    ],
+                    inputs=[imagebox, imagebox_2, imagebox_3, textbox],
+                    label="Multi-image Example 2",
                     fn=clear_after_click_example_3_image,
                     outputs=[state, imagebox, imagebox_2, imagebox_3, prompt_style_btn],
                     run_on_click=True,
@@ -683,13 +702,29 @@ def build_demo(embed_mode):
                         ],
                     ],
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
-                    label="In-context Learning Example (Please switch the prompt style to 'no-sys')",
+                    label="In-context Learning Example 1 (Please switch the prompt style to 'no-sys')",
                     fn=clear_after_click_example_3_image_icl,
                     outputs=[state, imagebox, imagebox_2, imagebox_3, prompt_style_btn],
                     run_on_click=True,
                 )
 
-                with gr.Accordion("Parameters", open=True) as parameter_row:
+                gr.Examples(
+                    examples=[
+                        [
+                            f"{cur_dir}/examples/icl-building/csail_building.jpeg",
+                            f"{cur_dir}/examples/icl-building/Toronto_Tower.jpeg",
+                            f"{cur_dir}/examples/icl-building/Golden_State_Bridge.jpeg",
+                            "<image> Boston. <image> Toronto. <image> ",
+                        ],
+                    ],
+                    inputs=[imagebox, imagebox_2, imagebox_3, textbox],
+                    label="In-context Learning Example 2 (Please switch the prompt style to 'no-sys')",
+                    fn=clear_after_click_example_3_image_icl,
+                    outputs=[state, imagebox, imagebox_2, imagebox_3, prompt_style_btn],
+                    run_on_click=True,
+                )
+
+                with gr.Accordion("Parameters", open=False) as parameter_row:
                     temperature = gr.Slider(
                         minimum=0.0,
                         maximum=1.0,
@@ -716,11 +751,11 @@ def build_demo(embed_mode):
                     )
 
                 # with gr.Row(elem_id="buttons") as button_row:
-                upvote_btn = gr.Button(value="👍  Upvote", interactive=False)
-                downvote_btn = gr.Button(value="👎  Downvote", interactive=False)
-                flag_btn = gr.Button(value="⚠️  Flag", interactive=False)
+                # upvote_btn = gr.Button(value="👍  Upvote", interactive=False)
+                # downvote_btn = gr.Button(value="👎  Downvote", interactive=False)
+                # flag_btn = gr.Button(value="⚠️  Flag", interactive=False)
                 # stop_btn = gr.Button(value="⏹️  Stop Generation", interactive=False)
-                regenerate_btn = gr.Button(value="🔄  Regenerate", interactive=False)
+                # regenerate_btn = gr.Button(value="🔄  Regenerate", interactive=False)
 
         if not embed_mode:
             gr.Markdown(tos_markdown)
@@ -729,31 +764,32 @@ def build_demo(embed_mode):
         url_params = gr.JSON(visible=False)
 
         # Register listeners
-        btn_list = [upvote_btn, downvote_btn, flag_btn, regenerate_btn, clear_btn]
+        # btn_list = [upvote_btn, downvote_btn, flag_btn, regenerate_btn, clear_btn]
+        btn_list = [regenerate_btn, clear_btn]
 
-        upvote_btn.click(
-            upvote_last_response,
-            [state, model_selector],
-            [textbox, upvote_btn, downvote_btn, flag_btn],
-            queue=False,
-        )
-        downvote_btn.click(
-            downvote_last_response,
-            [state, model_selector],
-            [textbox, upvote_btn, downvote_btn, flag_btn],
-            queue=False,
-        )
-        flag_btn.click(
-            flag_last_response,
-            [state, model_selector],
-            [textbox, upvote_btn, downvote_btn, flag_btn],
-            queue=False,
-        )
+        # upvote_btn.click(
+        #     upvote_last_response,
+        #     [state, model_selector],
+        #     [textbox, upvote_btn, downvote_btn, flag_btn],
+        #     queue=False,
+        # )
+        # downvote_btn.click(
+        #     downvote_last_response,
+        #     [state, model_selector],
+        #     [textbox, upvote_btn, downvote_btn, flag_btn],
+        #     queue=False,
+        # )
+        # flag_btn.click(
+        #     flag_last_response,
+        #     [state, model_selector],
+        #     [textbox, upvote_btn, downvote_btn, flag_btn],
+        #     queue=False,
+        # )
 
         regenerate_btn.click(
             regenerate,
             [state, image_process_mode],
-            [state, chatbot, textbox, imagebox, imagebox_2, imagebox_3] + btn_list,
+            [state, chatbot, textbox] + btn_list,
             queue=False,
         ).then(
             http_bot,
@@ -801,7 +837,9 @@ def build_demo(embed_mode):
         #     queue=False
         # )
 
-        textbox.submit(clear_text_history, [state], [state, chatbot], queue=False).then(
+        textbox.submit(
+            clear_text_history, [state, prompt_style_btn], [state, chatbot], queue=False
+        ).then(
             add_images,
             [state, imagebox, imagebox_2, imagebox_3, image_process_mode],
             [state],
@@ -822,7 +860,7 @@ def build_demo(embed_mode):
         )
 
         submit_btn.click(
-            clear_text_history, [state], [state, chatbot], queue=False
+            clear_text_history, [state, prompt_style_btn], [state, chatbot], queue=False
         ).then(
             add_images,
             [state, imagebox, imagebox_2, imagebox_3, image_process_mode],
