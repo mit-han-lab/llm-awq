@@ -95,6 +95,7 @@ def build_model_and_enc(model_path):
             model_base=None,
             model_name=get_model_name_from_path(model_path),
             device="cpu",
+            **{"use_cache": False}
         )
     else:
         config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
