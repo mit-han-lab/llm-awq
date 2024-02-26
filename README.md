@@ -60,7 +60,8 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
   - [AWQ Model Zoo](#awq-model-zoo)
   - [Examples](#examples)
   - [Usage](#usage)
-  - [Evaluation](#evaluation)
+  - [Results on Vision-Language Models (VILA-7b/13B)](#results-on-vision-language-models-vila-7b13b)
+  - [Inference speed ( Token/sec )](#inference-speed--tokensec-)
   - [Reference](#reference)
   - [Related Projects](#related-projects)
 
@@ -107,13 +108,15 @@ The detailed support list:
 | Models | Sizes                       | INT4-g128 | INT3-g128 |
 | ------ | --------------------------- | --------- | --------- |
 | [Llama2](/scripts/llama_example.sh)  | 7B/13B/70B  | ✅         | ✅        |
-| [LLaMA](/scripts/llama_example.sh)  | 7B/13B/30B/65B              | ✅         | ✅        |
+| [LLaMA](/scripts/llama2_example.sh)  | 7B/13B/30B/65B              | ✅         | ✅        |
 | [OPT](/scripts/opt_example.sh)    | 125m/1.3B/2.7B/6.7B/13B/30B | ✅         | ✅        |
-| CodeLlama | 7B/13B/34B               | ✅         | ✅        |
-| StarCoder | 15.5B                    | ✅         | ✅        |
-| Vicuna-v1.1 | 7B/13B                 | ✅         |           |
-| LLaVA-v0 | 13B                       | ✅         |           |
-| VILA    | 7B/13B                     | ✅         |           |
+| [CodeLlama](/scripts/codellama_example.sh) | 7B/13B/34B               | ✅         | ✅        |
+| [StarCoder](/scripts/starcoder_example.sh) | 15.5B                    | ✅         | ✅        |
+| [Vicuna-v1.1](/scripts/vicuna_example.sh) | 7B/13B                 | ✅         |           |
+| [LLaVA-v0](/scripts/llava_example.sh) | 13B                       | ✅         |           |
+| [VILA](/scripts/vila_example.sh)    | 7B/13B                     | ✅         |           |
+
+Note: We only list models that we have prepare the [AWQ searching results](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo/tree/main) in the table above. AWQ also supports models such as LLaVA-v1.5 7B, and you may need to run the [AWQ search](#usage) on your own to quantize these models.
 
 ## Examples
 
