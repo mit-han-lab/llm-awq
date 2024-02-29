@@ -39,6 +39,7 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
 
 
 ## News
+- [2024/02] 🔥 AWQ has been accepted to **MLSys 2024**!
 - [2024/02] 🔥 We supported [VILA model family](https://arxiv.org/abs/2312.07533) in AWQ & TinyChat! Check our latest demos with multi-image inputs!
 - [2024/02] 🔥 We released new version of quantized GEMM/GEMV kernels in [**TinyChat**](tinychat), leading to **38 tokens/second** inference speed on NVIDIA Jetson Orin!
 - [2023/11] 🔥 We added AWQ support and pre-computed search results for CodeLlama, StarCoder, StableCode models. Checkout our model zoo [here](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo)!
@@ -195,11 +196,11 @@ AWQ also seamlessly supports large multi-modal models (LMMs). We demonstrate the
 If you find AWQ useful or relevant to your research, please kindly cite our paper:
 
 ```
-@article{lin2023awq,
+@inproceedings{lin2023awq,
   title={AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration},
-  author={Lin, Ji and Tang, Jiaming and Tang, Haotian and Yang, Shang and Dang, Xingyu and Han, Song},
-  journal={arXiv},
-  year={2023}
+  author={Lin, Ji and Tang, Jiaming and Tang, Haotian and Yang, Shang and Chen, Wei-Ming and Wang, Wei-Chen and Xiao, Guangxuan and Dang, Xingyu and Gan, Chuang and Han, Song},
+  booktitle={MLSys},
+  year={2024}
 }
 ```
 
