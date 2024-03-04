@@ -199,18 +199,50 @@ def clear_after_click_example_3_image_icl(imagebox, imagebox_2, imagebox_3, text
 
 
 def add_images(
-    state, imagebox, imagebox_2, imagebox_3, image_process_mode, request: gr.Request
+    state, imagebox, imagebox_2, imagebox_3, videobox, image_process_mode, request: gr.Request
 ):
     if state.image_loaded:
         # return (state,) + (None,) * IMAGE_BOX_NUM
         return state
+    
+    def extract_frames(video_path):
+        import cv2
+        from PIL import Image
+        vidcap = cv2.VideoCapture(video_path)
+        fps = vidcap.get(cv2.CAP_PROP_FPS)
+        frame_count = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration = frame_count / fps
+
+        frame_interval = frame_count // 8
+        print(duration, frame_count, frame_interval)
+
+        frame_interval = 10
+        
+        def get_frame(stamp):
+            frame_id = int(fps * stamp)
+            vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+            ret, frame = vidcap.read()
+            assert ret, "videocap.read fails!"
+            img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            im_pil = Image.fromarray(img)
+            print(f"loading {stamp} success")
+            return im_pil
+        
+        # return [get_frame(0), get_frame(stamp1), get_frame(stamp2)]
+        return [get_frame(0), get_frame(frame_interval * 1), ]
+    
+    if videobox is not None:
+        frames = None
+        frames = extract_frames(videobox)
+        # add frames as regular images
+        logger.info(f"Got videobox: {videobox}.")
+    
     logger.info(f"add_image. ip: {request.client.host}.")
     im_count = 0
-    for image in [imagebox, imagebox_2, imagebox_3]:
+    image_list = [imagebox, imagebox_2, imagebox_3, *frames]
+    for image in image_list:
         if image is not None:
             im_count += 1
-    for image in [imagebox, imagebox_2, imagebox_3]:
-        if image is not None:
             if args.auto_pad_image_token or im_count == 1:
                 text = (AUTO_FILL_IM_TOKEN_HOLDER, image, image_process_mode)
             else:
@@ -222,6 +254,7 @@ def add_images(
             # state.append_message(state.roles[0], text)
             # state.append_message(state.roles[1], None)
     # state.skip_next = False
+    logger.info(f"im_count {im_count}. ip: {request.client.host}.")
     state.image_loaded = True
     # return (state,) + (None,) * IMAGE_BOX_NUM
     return state
@@ -564,6 +597,7 @@ def build_demo(embed_mode):
                     imagebox = gr.Image(type="pil")
                     imagebox_2 = gr.Image(type="pil")
                     imagebox_3 = gr.Image(type="pil")
+                    videobox = gr.Video(label="1 video = 8 frames")
                 image_process_mode = gr.Radio(
                     ["Crop", "Resize", "Pad", "Default"],
                     value="Default",
@@ -841,7 +875,7 @@ def build_demo(embed_mode):
             clear_text_history, [state, prompt_style_btn], [state, chatbot], queue=False
         ).then(
             add_images,
-            [state, imagebox, imagebox_2, imagebox_3, image_process_mode],
+            [state, imagebox, imagebox_2, imagebox_3, videobox, image_process_mode],
             [state],
             queue=False,
         ).then(
@@ -863,7 +897,7 @@ def build_demo(embed_mode):
             clear_text_history, [state, prompt_style_btn], [state, chatbot], queue=False
         ).then(
             add_images,
-            [state, imagebox, imagebox_2, imagebox_3, image_process_mode],
+            [state, imagebox, imagebox_2, imagebox_3, videobox, image_process_mode],
             [state],
             queue=False,
         ).then(
