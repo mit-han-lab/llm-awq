@@ -63,11 +63,13 @@ The latency reported in all tables are per-token latency for the generation stag
 | ----------- |:-----------------:|:-----------------:|:-------:|
 | LLaMA-2-7B  | 27.14             | 8.71              | 3.12x   |
 | LLaMA-2-13B | 47.28             | 14.64             | 3.23x   |
-| Vicuna-7B   | 26.06             | 8.39              | 3.11x   |
+| Vicuna-7B   | 26.06             | 8.39              | 3.11x   | 
 | Vicuna-13B  | 44.91             | 13.46             | 3.34x   |
 | MPT-7B      | 22.79             | 7.99              | 2.85x   |
-| MPT-30B     | OOM               | 28.15             | --      |
+| MPT-30B     | OOM               | 28.15             | --      |  
 | Falcon-7B   | 39.44             | 11.71             | 3.37x   |
+| VILA-7B     | 23.60             | 8.14              | 2.90x   |
+| VILA-13B    | 46.58             | 13.74             | 3.39x   |
 
 ### 4090 Results
 
@@ -80,6 +82,8 @@ The latency reported in all tables are per-token latency for the generation stag
 | MPT-7B      | 17.09             | 6.18              | 2.77x   |
 | MPT-30B     | OOM               | 20.60             | --      |
 | Falcon-7B   | 29.91             | 8.02              | 3.73x   |
+| VILA-7B     | 17.09             | 5.95              | 2.87x   |
+| VILA-13B    | OOM               | 10.01             | --      |
 
 *: The reason why LLaMA-2-7B is slower than Vicuna-7B is because we need a longer prompt (with > 500 tokens) to prevent the model from talking with itself. If we use the benchmarking strategy from exLLaMA (i.e. only 4 context tokens), our speed is around 195 tokens / second.
 
@@ -87,12 +91,14 @@ The latency reported in all tables are per-token latency for the generation stag
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 104.71            | 33.07*            | 3.17x   |
+| LLaMA-2-7B  | 104.71            | 33.07*            | 3.17x   | 
 | LLaMA-2-13B | OOM               | 58.20             | --      |
 | Vicuna-7B   | 93.12             | 30.73             | 3.03x   |
 | Vicuna-13B  | OOM               | 54.98             | --      |
 | MPT-7B      | 89.85             | 31.22             | 2.88x   |
 | Falcon-7B   | 147.84            | 45.10             | 3.28x   |
+| VILA-7B     | 86.95             | 28.09             | 3.10x   |
+| VILA-13B    | OOM               | 57.14             | --      |
 
 *: We can similarly achieve 33 tokens / second on Orin if we use the benchmarking strategy from exLLaMA.
 
