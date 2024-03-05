@@ -213,9 +213,8 @@ def add_images(
         frame_count = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration = frame_count / fps
 
-        frame_interval = frame_count // 8
+        frame_interval = frame_count // 16
         print(duration, frame_count, frame_interval)
-
         frame_interval = 10
         
         def get_frame(stamp):
@@ -231,18 +230,23 @@ def add_images(
         # return [get_frame(0), get_frame(stamp1), get_frame(stamp2)]
         return [get_frame(0), get_frame(frame_interval * 1), ]
     
+    frames = [None, ]
     if videobox is not None:
-        frames = None
         frames = extract_frames(videobox)
         # add frames as regular images
         logger.info(f"Got videobox: {videobox}.")
     
     logger.info(f"add_image. ip: {request.client.host}.")
-    im_count = 0
     image_list = [imagebox, imagebox_2, imagebox_3, *frames]
+    logger.info(f"image_list: {image_list}")
+
+    im_count = 0
     for image in image_list:
         if image is not None:
             im_count += 1
+            
+    for image in image_list:
+        if image is not None:
             if args.auto_pad_image_token or im_count == 1:
                 text = (AUTO_FILL_IM_TOKEN_HOLDER, image, image_process_mode)
             else:
