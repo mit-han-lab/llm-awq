@@ -213,11 +213,11 @@ def add_images(
         frame_count = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration = frame_count / fps
 
-        frame_interval = frame_count // 16
+        frame_interval = frame_count // 10
         print("duration:", duration, "frames:", frame_count, "intervals:", frame_interval)
-        frame_interval = 10
+        # frame_interval = 10
         
-        def get_frame(max_frames=6):
+        def get_frame(max_frames):
             # frame_id = int(fps * stamp)
             # vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
             # ret, frame = vidcap.read()
@@ -244,7 +244,7 @@ def add_images(
         # img = get_frame(0)
         # img1 = get_frame(frame_interval * 1)
         # return [img, img1, img, img1, img, img1,]
-        return get_frame(6)
+        return get_frame(8)
     
     frames = [None, ]
     if videobox is not None:
