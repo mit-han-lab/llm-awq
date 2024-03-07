@@ -214,21 +214,37 @@ def add_images(
         duration = frame_count / fps
 
         frame_interval = frame_count // 16
-        print(duration, frame_count, frame_interval)
+        print("duration:", duration, "frames:", frame_count, "intervals:", frame_interval)
         frame_interval = 10
         
-        def get_frame(stamp):
-            frame_id = int(fps * stamp)
-            vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
-            ret, frame = vidcap.read()
-            assert ret, "videocap.read fails!"
-            img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            im_pil = Image.fromarray(img)
-            print(f"loading {stamp} success")
-            return im_pil
+        def get_frame(max_frames=6):
+            # frame_id = int(fps * stamp)
+            # vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+            # ret, frame = vidcap.read()
+            images = []
+            count = 0 
+            success = True
+            while success:
+                success, frame = vidcap.read()
+                if count % frame_interval:
+                    img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    im_pil = Image.fromarray(img)
+                    images.append(im_pil)
+                    if len(images) == max_frames:
+                        return images
+                    
+                count += 1
+            # assert ret, "videocap.read fails!"
+            # img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # im_pil = Image.fromarray(img)
+            # print(f"loading {stamp} success")
+            return images
         
         # return [get_frame(0), get_frame(stamp1), get_frame(stamp2)]
-        return [get_frame(0), get_frame(frame_interval * 1), ]
+        # img = get_frame(0)
+        # img1 = get_frame(frame_interval * 1)
+        # return [img, img1, img, img1, img, img1,]
+        return get_frame(6)
     
     frames = [None, ]
     if videobox is not None:

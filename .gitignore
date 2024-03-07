@@ -171,3 +171,6 @@ cython_debug/
 **/*.pyc
 *.json
 __pycache__
+controller.log.*
+tinychat/serve/gradio_web_server.log.*
+tinychat/serve/model_worker_*
