@@ -39,6 +39,7 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
 
 
 ## News
+- [2024/03] 🔥 AWQ has been widely adopted by the industry, such as [NVIDIA](https://github.com/NVIDIA/TensorRT-LLM/), [Google](https://console.cloud.google.com/vertex-ai/publishers/google/model-garden/161?pli=1), [Amazon](https://aws.amazon.com/blogs/machine-learning/boost-inference-performance-for-llms-with-new-amazon-sagemaker-containers/), and [Intel](https://github.com/intel/neural-compressor)!
 - [2024/02] 🔥 AWQ has been accepted to **MLSys 2024**!
 - [2024/02] 🔥 We supported [VILA Vision Languague Models](https://arxiv.org/abs/2312.07533) in AWQ & TinyChat! Check our latest demos with multi-image inputs!
 - [2024/02] 🔥 We released new version of quantized GEMM/GEMV kernels in [**TinyChat**](tinychat), leading to **38 tokens/second** inference speed on NVIDIA Jetson Orin!
