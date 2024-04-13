@@ -130,6 +130,8 @@ def build_model_and_enc(model_path):
                 "BloomBlock",
                 "MPTBlock",
                 "DecoderLayer",
+                "MistralDecoderLayer", 
+                "MixtralDecoderLayer",
             ],
             **kwargs,
         )
@@ -208,6 +210,7 @@ def build_model_and_enc(model_path):
                 model, max_memory if len(max_memory) > 0 else None
             )
         }
+        
         device_map = infer_auto_device_map(
             model,
             # TODO: can we remove this?
@@ -217,6 +220,8 @@ def build_model_and_enc(model_path):
                 "BloomBlock",
                 "MPTBlock",
                 "DecoderLayer",
+                "MistralDecoderLayer", 
+                "MixtralDecoderLayer",
             ],
             **kwargs,
         )
