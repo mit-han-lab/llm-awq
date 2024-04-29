@@ -99,6 +99,8 @@ def build_model_and_enc(model_path):
         )
     else:
         config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+        # Note (Haotian): To avoid OOM after huggingface transformers 4.36.2
+        config.use_cache = False
         if "mpt" in config.__class__.__name__.lower():
             enc = AutoTokenizer.from_pretrained(
                 config.tokenizer_name, trust_remote_code=True

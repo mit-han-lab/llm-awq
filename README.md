@@ -8,7 +8,7 @@
 The current release supports: 
 
 - AWQ search for accurate quantization. 
-- Pre-computed AWQ model zoo for LLMs (LLaMA, Llama2, OPT, CodeLlama, StarCoder, Vicuna, VILA, LLaVA; load to generate quantized weights).
+- Pre-computed AWQ model zoo for LLMs (Llama-1/2/3, OPT, CodeLlama, StarCoder, Vicuna, VILA, LLaVA; load to generate quantized weights).
 - Memory-efficient 4-bit Linear in PyTorch.
 - Efficient CUDA kernel implementation for fast inference (support context and decoding stage).
 - Examples on 4-bit inference of an instruction-tuned model (Vicuna) and **multi-modal LM** (VILA).
@@ -39,6 +39,7 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
 
 
 ## News
+- [2024/04] 🔥 We released AWQ and TinyChat support for The **Llama-3** model family! Check out our example [here](scripts/llama3_example.sh).
 - [2024/03] 🔥 AWQ has been widely adopted by the industry, such as [NVIDIA](https://github.com/NVIDIA/TensorRT-LLM/), [Google](https://console.cloud.google.com/vertex-ai/publishers/google/model-garden/161?pli=1), [Amazon](https://aws.amazon.com/blogs/machine-learning/boost-inference-performance-for-llms-with-new-amazon-sagemaker-containers/), and [Intel](https://github.com/intel/neural-compressor)!
 - [2024/02] 🔥 AWQ has been accepted to **MLSys 2024**!
 - [2024/02] 🔥 We supported [VILA Vision Languague Models](https://arxiv.org/abs/2312.07533) in AWQ & TinyChat! Check our latest demos with multi-image inputs!
@@ -109,6 +110,7 @@ The detailed support list:
 
 | Models | Sizes                       | INT4-g128 | INT3-g128 |
 | ------ | --------------------------- | --------- | --------- |
+| [Llama3](/scripts/llama_example.sh)  | 8B/70B  | ✅         | ✅        |
 | [Llama2](/scripts/llama_example.sh)  | 7B/13B/70B  | ✅         | ✅        |
 | [LLaMA](/scripts/llama2_example.sh)  | 7B/13B/30B/65B              | ✅         | ✅        |
 | [OPT](/scripts/opt_example.sh)    | 125m/1.3B/2.7B/6.7B/13B/30B | ✅         | ✅        |
@@ -136,35 +138,35 @@ We provide several sample script to run AWQ (please refer to `./scripts`). We us
 
 1. Perform AWQ search and save search results (we already did it for you):
 ```bash
-python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
+python -m awq.entry --model_path /PATH/TO/LLAMA3/llama3-8b \
     --w_bit 4 --q_group_size 128 \
-    --run_awq --dump_awq awq_cache/opt-6.7b-w4-g128.pt
+    --run_awq --dump_awq awq_cache/llama3-8b-w4-g128.pt
 ```
 
 2. Evaluate the AWQ quantized model on WikiText-2 (simulated pseudo quantization)
 ```bash
-python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
+python -m awq.entry --model_path /PATH/TO/LLAMA3/llama3-8b \
     --tasks wikitext \
     --w_bit 4 --q_group_size 128 \
-    --load_awq awq_cache/opt-6.7b-w4-g128.pt \
+    --load_awq awq_cache/llama3-8b-w4-g128.pt \
     --q_backend fake
 ```
 
 3. Generate real quantized weights (INT4)
 ```bash
 mkdir quant_cache
-python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
+python -m awq.entry --model_path /PATH/TO/LLAMA3/llama3-8b \
     --w_bit 4 --q_group_size 128 \
-    --load_awq awq_cache/opt-6.7b-w4-g128.pt \
-    --q_backend real --dump_quant quant_cache/opt-6.7b-w4-g128-awq.pt
+    --load_awq awq_cache/llama3-8b-w4-g128.pt \
+    --q_backend real --dump_quant quant_cache/llama3-8b-w4-g128-awq.pt
 ```
 
 4. Load and evaluate the real quantized model (now you can see smaller gpu memory usage)
 ```bash
-python -m awq.entry --model_path /PATH/TO/OPT/opt-6.7b \
+python -m awq.entry --model_path /PATH/TO/LLAMA3/llama3-8b \
     --tasks wikitext \
     --w_bit 4 --q_group_size 128 \
-    --load_quant quant_cache/opt-6.7b-w4-g128-awq.pt
+    --load_quant quant_cache/llama3-8b-w4-g128-awq.pt
 ```
 
 ## Results on Vision-Language Models (VILA-7b/13B)

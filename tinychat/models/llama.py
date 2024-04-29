@@ -35,10 +35,10 @@ class RMSNorm(torch.nn.Module):
         return output
 
 
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
+def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, scale: float = 1.0):
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     t = torch.arange(end, device=freqs.device)  # type: ignore
-    freqs = torch.outer(t, freqs).float()  # type: ignore
+    freqs = torch.outer(t * scale, freqs).float()  # type: ignore
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
     return freqs_cis
 
@@ -82,7 +82,12 @@ class LlamaAttentionFused(nn.Module):
         self.num_key_value_heads = args.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = args.max_position_embeddings
-        # self.rope_theta = args.rope_theta
+        self.rope_theta = args.rope_theta
+        self.rope_scaling = args.rope_scaling
+        if self.rope_scaling is None:
+            self.rope_scaling = 1.0
+        else:
+            self.rope_scaling = 1.0 / self.rope_scaling["factor"]
 
         kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
 
@@ -213,7 +218,8 @@ class LlamaAttentionFused(nn.Module):
                 None,
                 start_pos,
                 self.head_dim,
-                10000,
+                self.rope_theta,
+                self.rope_scaling,
                 True,
             )
             output = output.reshape(bsz, 1, -1)
@@ -276,9 +282,17 @@ class Transformer(nn.Module):
 
         self.norm = RMSNorm(params.hidden_size, eps=params.rms_norm_eps)
 
+        # Note (Haotian): rope_theta has to be defined here, otherwise context stage is wrong.
+        rope_scale = self.params.rope_scaling
+        if rope_scale is None:
+            rope_scale = 1.0
+        else:
+            rope_scale = 1.0 / rope_scale["factor"]
         self.freqs_cis = precompute_freqs_cis(
             self.params.hidden_size // self.params.num_attention_heads,
             self.params.max_position_embeddings * 2,
+            self.params.rope_theta,
+            rope_scale
         )
 
     @torch.inference_mode()

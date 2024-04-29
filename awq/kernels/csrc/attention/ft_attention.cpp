@@ -58,6 +58,7 @@ void set_params(Masked_multihead_attention_params<T> &params,
                 const int timestep,
                 const int rotary_embedding_dim,
                 const float rotary_base,
+                const float rotary_scale,
                 const bool neox_rotary_style,
                 const int qkv_batch_stride,
                 T *q_ptr,
@@ -90,6 +91,7 @@ void set_params(Masked_multihead_attention_params<T> &params,
     params.hidden_size_per_head = headdim;
     params.rotary_embedding_dim = rotary_embedding_dim;
     params.rotary_base = rotary_base;
+    params.rotary_scale = rotary_scale;
     params.neox_rotary_style = neox_rotary_style;
     params.timestep = timestep;
     params.inv_sqrt_dh = 1.f / sqrt(float(headdim));
@@ -117,6 +119,7 @@ torch::Tensor single_query_attention(const torch::Tensor q,
                                      const int timestep,
                                      const int rotary_embedding_dim,
                                      const float rotary_base,
+                                     const float rotary_scale,
                                      // neox_rotary_style = not interleaved
                                      const bool neox_rotary_style) {
     CHECK_DEVICE(q); CHECK_DEVICE(k); CHECK_DEVICE(v); CHECK_DEVICE(k_cache); CHECK_DEVICE(v_cache);
@@ -164,7 +167,7 @@ torch::Tensor single_query_attention(const torch::Tensor q,
         using DataType = typename SATypeConverter<scalar_t>::Type;
         Masked_multihead_attention_params<DataType> params;
         set_params(params, batch_size, nheads, nheads_kv, memory_max_seqlen, headdim, 
-                   timestep, rotary_embedding_dim, rotary_base, neox_rotary_style, q.stride(0),
+                   timestep, rotary_embedding_dim, rotary_base, rotary_scale, neox_rotary_style, q.stride(0),
                    reinterpret_cast<DataType*>(q.data_ptr()),
                    reinterpret_cast<DataType*>(k.data_ptr()),
                    reinterpret_cast<DataType*>(v.data_ptr()),

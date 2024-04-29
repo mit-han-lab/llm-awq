@@ -212,6 +212,7 @@ class MPTAttentionFused(nn.Module):
                 # rotary embed dim = 0 => no rotary embedding
                 0,
                 10000,
+                1.0,
                 True,
             )
             output = output.reshape(bsz, 1, -1)

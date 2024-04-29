@@ -4,11 +4,13 @@ We introduce TinyChat, a cutting-edge chatbot interface designed for lightweight
 
 The current release supports:
 
+- Llama-3-8B/70B-instruct;
+
 - VILA-7B/13B;
 
 - LLaVA-7B/13B;
 
-- LLaMA-2-7B/13B-chat;
+- Llama-2-7B/13B-chat;
 
 - Vicuna;
 
@@ -61,10 +63,11 @@ The latency reported in all tables are per-token latency for the generation stag
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 27.14             | 8.71              | 3.12x   |
-| LLaMA-2-13B | 47.28             | 14.64             | 3.23x   |
-| Vicuna-7B   | 26.06             | 8.39              | 3.11x   | 
-| Vicuna-13B  | 44.91             | 13.46             | 3.34x   |
+| LLaMA-3-8B  | 24.95             | 10.68             | 2.34x   |         
+| LLaMA-2-7B  | 22.75             | 8.71              | 2.61x   |
+| LLaMA-2-13B | 41.72             | 14.64             | 2.85x   |
+| Vicuna-7B   | 22.03             | 8.39              | 2.63x   | 
+| Vicuna-13B  | 38.97             | 13.46             | 2.90x   |
 | MPT-7B      | 22.79             | 7.99              | 2.85x   |
 | MPT-30B     | OOM               | 28.15             | --      |  
 | Falcon-7B   | 39.44             | 11.71             | 3.37x   |
@@ -75,9 +78,10 @@ The latency reported in all tables are per-token latency for the generation stag
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 19.97             | 6.02*             | 3.31x   |
+| LLaMA-3-8B  | 17.07             | 6.66              | 2.56x   |
+| LLaMA-2-7B  | 16.17             | 6.02*             | 2.68x   |
 | LLaMA-2-13B | OOM               | 10.35             | --      |
-| Vicuna-7B   | 19.09             | 5.33              | 3.58x   |
+| Vicuna-7B   | 15.81             | 5.33              | 2.97x   |
 | Vicuna-13B  | OOM               | 9.17              | --      |
 | MPT-7B      | 17.09             | 6.18              | 2.77x   |
 | MPT-30B     | OOM               | 20.60             | --      |
@@ -91,9 +95,10 @@ The latency reported in all tables are per-token latency for the generation stag
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
-| LLaMA-2-7B  | 104.71            | 33.07*            | 3.17x   | 
+| LLaMA-3-8B  | 96.24             | 32.55             | 2.96x   |
+| LLaMA-2-7B  | 86.80             | 32.14*            | 2.70x   | 
 | LLaMA-2-13B | OOM               | 58.20             | --      |
-| Vicuna-7B   | 93.12             | 30.73             | 3.03x   |
+| Vicuna-7B   | 84.77             | 30.73             | 2.76x   |
 | Vicuna-13B  | OOM               | 54.98             | --      |
 | MPT-7B      | 89.85             | 31.22             | 2.88x   |
 | Falcon-7B   | 147.84            | 45.10             | 3.28x   |
