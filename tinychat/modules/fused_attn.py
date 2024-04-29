@@ -176,7 +176,10 @@ class QuantLlamaAttentionFused(nn.Module):
         self.num_key_value_heads = args.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = args.max_position_embeddings
-        # self.rope_theta = args.rope_theta
+        self.rope_theta = args.rope_theta
+        self.rope_scaling = args.rope_scaling
+        if self.rope_scaling is None:
+            self.rope_scaling = 1.0
 
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
@@ -293,7 +296,8 @@ class QuantLlamaAttentionFused(nn.Module):
                 None,
                 start_pos,
                 self.head_dim,
-                10000,
+                self.rope_theta,
+                self.rope_scaling,
                 True,
             )
             output = output.reshape(bsz, 1, -1)

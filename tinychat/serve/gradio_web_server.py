@@ -185,6 +185,11 @@ def clear_after_click_example_1_image(imagebox, textbox):
     prompt_style_btn = "default"
     return (state, imagebox, imagebox_2, imagebox_3, prompt_style_btn)
 
+def clear_after_click_example_2_image(imagebox, imagebox_2, textbox):
+    imagebox_3 = None
+    state = get_conversation("default")
+    prompt_style_btn = "default"
+    return (state, imagebox, imagebox_2, imagebox_3, prompt_style_btn)
 
 def clear_after_click_example_3_image(imagebox, imagebox_2, imagebox_3, textbox):
     state = get_conversation("default")
@@ -659,6 +664,104 @@ def build_demo(embed_mode):
                             ],
                             run_on_click=True,
                         )
+                with gr.Row(equal_height=True):
+                    with gr.Column(scale=1, min_width=50):
+                        gr.Examples(
+                            examples=[
+                                [
+                                    f"{cur_dir}/examples/CPR.jpg",
+                                    "<image> What are the people doing in this image?",
+                                ],
+                            ],
+                            label="Example 3",
+                            inputs=[imagebox, textbox],
+                            fn=clear_after_click_example_1_image,
+                            outputs=[
+                                state,
+                                imagebox,
+                                imagebox_2,
+                                imagebox_3,
+                                prompt_style_btn,
+                            ],
+                            run_on_click=True,
+                        )
+                    with gr.Column(scale=1, min_width=50):
+                        gr.Examples(
+                            examples=[
+                                [
+                                    f"{cur_dir}/examples/Wall_fissure.png",
+                                    "<image> What are the likely service needed for this building?",
+                                ],
+                            ],
+                            label="Example 4",
+                            inputs=[imagebox, textbox],
+                            fn=clear_after_click_example_1_image,
+                            outputs=[
+                                state,
+                                imagebox,
+                                imagebox_2,
+                                imagebox_3,
+                                prompt_style_btn,
+                            ],
+                            run_on_click=True,
+                        )
+
+                with gr.Row(equal_height=True):
+                    with gr.Column(scale=1, min_width=50):
+                        gr.Examples(
+                            examples=[
+                                [
+                                    f"{cur_dir}/examples/animal_blocking.png",
+                                    "<image> What is unusual in this image?",
+                                ],
+                            ],
+                            label="Example 5",
+                            inputs=[imagebox, textbox],
+                            fn=clear_after_click_example_1_image,
+                            outputs=[
+                                state,
+                                imagebox,
+                                imagebox_2,
+                                imagebox_3,
+                                prompt_style_btn,
+                            ],
+                            run_on_click=True,
+                        )
+                    with gr.Column(scale=1, min_width=50):
+                        gr.Examples(
+                            examples=[
+                                [
+                                    f"{cur_dir}/examples/windmill_people.png",
+                                    "<image> Can you describe what is happening?",
+                                ],
+                            ],
+                            label="Example 6",
+                            inputs=[imagebox, textbox],
+                            fn=clear_after_click_example_1_image,
+                            outputs=[
+                                state,
+                                imagebox,
+                                imagebox_2,
+                                imagebox_3,
+                                prompt_style_btn,
+                            ],
+                            run_on_click=True,
+                        )
+
+                gr.Examples(
+                    examples=[
+                        [
+                            f"{cur_dir}/examples/climate_change/climate_change_1.png",
+                            f"{cur_dir}/examples/climate_change/climate_change_2.png",
+                            "<image> <image> What is the implication of temperature based on this image?",
+                        ],
+                    ],
+                    inputs=[imagebox, imagebox_2, textbox],
+                    label="Multi-image Example 1",
+                    fn=clear_after_click_example_2_image,
+                    outputs=[state, imagebox, imagebox_2, imagebox_3, prompt_style_btn],
+                    run_on_click=True,
+                )
 
                 gr.Examples(
                     examples=[
@@ -670,7 +773,7 @@ def build_demo(embed_mode):
                         ],
                     ],
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
-                    label="Multi-image Example 1",
+                    label="Multi-image Example 2",
                     fn=clear_after_click_example_3_image,
                     outputs=[state, imagebox, imagebox_2, imagebox_3, prompt_style_btn],
                     run_on_click=True,
@@ -686,7 +789,7 @@ def build_demo(embed_mode):
                         ],
                     ],
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
-                    label="Multi-image Example 2",
+                    label="Multi-image Example 3",
                     fn=clear_after_click_example_3_image,
                     outputs=[state, imagebox, imagebox_2, imagebox_3, prompt_style_btn],
                     run_on_click=True,
@@ -719,6 +822,22 @@ def build_demo(embed_mode):
                     ],
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
                     label="In-context Learning Example 2 (Please switch the prompt style to 'no-sys')",
+                    fn=clear_after_click_example_3_image_icl,
+                    outputs=[state, imagebox, imagebox_2, imagebox_3, prompt_style_btn],
+                    run_on_click=True,
+                )
+
+                gr.Examples(
+                    examples=[
+                        [
+                            f"{cur_dir}/examples/arts/sunflowers.jpg",
+                            f"{cur_dir}/examples/arts/the_persistence_of_memory.png",
+                            f"{cur_dir}/examples/arts/impression_sunrise.png",
+                            "<image> Vincent Van Gogh. <image> Salvador Dalí. <image>",
+                        ],
+                    ],
+                    inputs=[imagebox, imagebox_2, imagebox_3, textbox],
+                    label="In-context Learning Example 3 (Please switch the prompt style to 'no-sys')",
                     fn=clear_after_click_example_3_image_icl,
                     outputs=[state, imagebox, imagebox_2, imagebox_3, prompt_style_btn],
                     run_on_click=True,

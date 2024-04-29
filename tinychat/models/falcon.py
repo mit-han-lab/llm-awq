@@ -124,6 +124,12 @@ class FalconAttentionFused(nn.Module):
         )  # added to half
 
         self.rotary_emb = RotaryEmbedding(self.head_dim)
+        self.rope_theta = args.rope_theta
+        self.rope_scaling = args.rope_scaling
+        if self.rope_scaling is None:
+            self.rope_scaling = 1.0
+        else:
+            self.rope_scaling = 1.0 / self.rope_scaling["factor"]
 
     def forward(
         self,
@@ -200,7 +206,8 @@ class FalconAttentionFused(nn.Module):
                 None,
                 start_pos,
                 self.head_dim,
-                10000,
+                self.rope_theta,
+                self.rope_scaling,
                 True,
             )
             output = output.reshape(bsz, 1, -1)

@@ -12,4 +12,5 @@ torch::Tensor single_query_attention(const torch::Tensor q,
                                      const int timestep,
                                      const int rotary_embedding_dim = 0,
                                      const float rotary_base = 10000.0f,
+                                     const float rotary_scale = 1.0f,
                                      const bool neox_rotary_style=true);

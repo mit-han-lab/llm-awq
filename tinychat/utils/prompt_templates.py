@@ -32,6 +32,7 @@ class BasePrompter:
         role2,
         sen_spliter="\n",
         qa_spliter="\n",
+        colon=":",
         decorator: List[str] = None,
     ):
         self.system_inst = system_inst  # System Instruction
@@ -40,6 +41,7 @@ class BasePrompter:
         self.sen_spliter = sen_spliter  # How to split system/user/assistant outputs
         self.qa_spliter = qa_spliter  # How to split Q&A rounds
         self.decorator = decorator
+        self.colon = colon
         if self.decorator == None:
             self.starter = ""
             self.stopper = ""
@@ -50,12 +52,12 @@ class BasePrompter:
             self.template = (
                 self.starter
                 + self.role1
-                + ": {prompt}"
+                + self.colon + " {prompt}"
                 + self.stopper
                 + self.sen_spliter
                 + self.starter
                 + self.role2
-                + ":"
+                + self.colon
             )
         else:
             self.template = (
@@ -65,12 +67,12 @@ class BasePrompter:
                 + self.sen_spliter
                 + self.starter
                 + self.role1
-                + ": {prompt}"
+                + self.colon + " {prompt}"
                 + self.stopper
                 + self.sen_spliter
                 + self.starter
                 + self.role2
-                + ":"
+                + self.colon
             )
         self.model_input = None
 
@@ -169,6 +171,26 @@ class Llama2Prompter(OneShotBasePrompter):
         )
 
 
+class Llama3Prompter(BasePrompter):
+    """
+    Example:
+    <|start_header_id|>user<|end_header_id|>
+
+    Show me some attractions in Boston.<|eot_id|>
+
+    <|start_header_id|>assistant<|end_header_id|>
+
+    """
+    def __init__(self):
+        system_inst = ""
+        role1 = "<|start_header_id|>user<|end_header_id|>\n\n"
+        role2 = "<|start_header_id|>assistant<|end_header_id|>\n\n"
+        sen_spliter = "<|eot_id|>"
+        qa_spliter = ""
+        colon = ""
+        super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon)
+
+
 class LlavaLlamaPrompter(BasePrompter):
     def __init__(self):
         system_inst = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions."
@@ -239,6 +261,8 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
     if model_type.lower() == "llama":
         if "vicuna" in model_path.lower():
             return VicunaPrompter()
+        elif ("llama-3" in model_path.lower() or "llama3" in model_path.lower()) and "30b" not in model_path.lower():
+            return Llama3Prompter()
         elif "llava" in model_path.lower() or "vila" in model_path.lower():
             return LlavaLlamaPrompter()
         else:
@@ -257,6 +281,9 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
 
 def get_stop_token_ids(model_type, model_path=""):
     if model_type.lower() == "llama":
+        if ("llama-3" in model_path.lower() or "llama3" in model_path.lower()) and "30b" not in model_path.lower():
+            # llama3
+            return [128001, 128009]
         return []
     elif model_type.lower() == "falcon":
         return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
