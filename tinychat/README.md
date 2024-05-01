@@ -51,7 +51,7 @@ The current release supports:
 ![TinyChat with VILA on Orin](./figures/orin_vila_example.gif)
 
 
-## Benchmarks
+## Speed Benchmarks
 
 We benchmark TinyChat on A6000 (server-class GPU), 4090 (desktop GPU) and Orin (edge GPU).
 
@@ -107,9 +107,9 @@ The latency reported in all tables are per-token latency for the generation stag
 
 *: We can similarly achieve 33 tokens / second on Orin if we use the benchmarking strategy from exLLaMA.
 
-## Evaluation
+## Accuracy Evaluation
 
-We recently evaluated AWQ's performance on tVision Language Models. Here is a summary of VILA results.
+We recently evaluated AWQ's performance on Vision Language Models. Here is a summary of VILA results.
 
 | VILA-7B     | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
 | ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
