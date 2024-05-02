@@ -18,8 +18,17 @@ __all__ = ["run_awq"]
 
 
 def get_named_linears(module):
-    return {name: m for name, m in module.named_modules() if isinstance(m, nn.Linear)}
+    named_linears = {}
+    for name, m in module.named_modules():
+        if isinstance(m, nn.Linear):
+            # exclude the gate layer
+            if "mixtral" in str(module.__class__).lower():
+                if "gate" in name:
+                    continue
+                
+            named_linears[name] = m
 
+    return named_linears
 
 def get_blocks(model):
     if model.__class__.__name__ == "LlamaForCausalLM":
@@ -39,6 +48,10 @@ def get_blocks(model):
         layers = model.transformer.h
     elif "neox" in str(model.__class__).lower():
         layers = model.gpt_neox.layers
+    elif "mistral" in str(model.__class__).lower():
+        layers = model.model.layers
+    elif "mixtral" in str(model.__class__).lower():
+        layers = model.model.layers
     else:
         raise NotImplementedError(type(model))
     return layers
@@ -73,6 +86,10 @@ def move_embed(model, device):
         model.gpt_neox.embed_in = model.gpt_neox.embed_in.to(device)
         model.gpt_neox.emb_dropout = model.gpt_neox.emb_dropout.to(device)
         model.embed_out = model.embed_out.to(device)
+    elif "mistral" in str(model.__class__).lower():
+        model.model.embed_tokens = model.model.embed_tokens.to(device)
+    elif "mixtral" in str(model.__class__).lower():
+        model.model.embed_tokens = model.model.embed_tokens.to(device)
     else:
         raise NotImplementedError(type(model))
 
@@ -129,10 +146,18 @@ def run_awq(
         model(samples.to(next(model.parameters()).device))
     except ValueError:  # work with early exit
         pass
+    
+    # From AutoAWQ
+    # Update the layer kwargs with `prepare_inputs_for_generation` method
+    # that takes care of everything to avoid unexpected errors.
+    layer_kwargs = model.prepare_inputs_for_generation(samples, **layer_kwargs)
+    # Pop the input_ids as they are not needed at all.
+    layer_kwargs.pop("input_ids")
+
     del samples
     layers[0] = layers[0].module  # restore
     inps = inps[0]
-
+    
     layers[0] = layers[0].cpu()
     move_embed(model, "cpu")
 
@@ -158,6 +183,13 @@ def run_awq(
 
         input_feat = defaultdict(list)
         handles = []
+        
+        if "mixtral" in str(model.__class__).lower():
+            named_linears = {
+                **named_linears,
+                "block_sparse_moe": layer.block_sparse_moe,
+            }
+        
         for name in named_linears:
             handles.append(
                 named_linears[name].register_forward_hook(
