@@ -39,6 +39,7 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
 
 
 ## News
+- [2024/05] 🔥 The **VILA-1.5** model family which features **video understanding** is now supported in AWQ and TinyChat. Check out out online demo powered by TinyChat [here](https://vila.hanlab.ai). Example is [here](scripts/vila15_example.sh). 
 - [2024/04] 🔥 We released AWQ and TinyChat support for The **Llama-3** model family! Check out our example [here](scripts/llama3_example.sh).
 - [2024/03] 🔥 AWQ has been widely adopted by the industry, such as [NVIDIA](https://github.com/NVIDIA/TensorRT-LLM/), [Google](https://console.cloud.google.com/vertex-ai/publishers/google/model-garden/161?pli=1), [Amazon](https://aws.amazon.com/blogs/machine-learning/boost-inference-performance-for-llms-with-new-amazon-sagemaker-containers/), and [Intel](https://github.com/intel/neural-compressor)!
 - [2024/02] 🔥 AWQ has been accepted to **MLSys 2024**!
@@ -97,6 +98,14 @@ cd awq/kernels
 python setup.py install
 ```
 
+4. In order to run AWQ and TinyChat with VILA-1.5 model family, please install VILA:
+
+```bash
+git clone git@github.com:Efficient-Large-Model/VILA.git
+cd VILA
+pip install -e .
+```
+
 ## AWQ Model Zoo
 
 We provide pre-computed AWQ search results for multiple model families, including LLaMA, OPT, Vicuna, and LLaVA. To get the pre-computed AWQ search results, run:
@@ -110,7 +119,9 @@ The detailed support list:
 
 | Models | Sizes                       | INT4-g128 | INT3-g128 |
 | ------ | --------------------------- | --------- | --------- |
+| [VILA-1.5](/scripts/vila15_example.sh)  | 3B/8B/13B/40B  | ✅         | ✅        |
 | [Llama3](/scripts/llama_example.sh)  | 8B/70B  | ✅         | ✅        |
+| [VILA](/scripts/vila_example.sh)    | 7B/13B                     | ✅         |           |
 | [Llama2](/scripts/llama_example.sh)  | 7B/13B/70B  | ✅         | ✅        |
 | [LLaMA](/scripts/llama2_example.sh)  | 7B/13B/30B/65B              | ✅         | ✅        |
 | [OPT](/scripts/opt_example.sh)    | 125m/1.3B/2.7B/6.7B/13B/30B | ✅         | ✅        |
@@ -118,7 +129,6 @@ The detailed support list:
 | [StarCoder](/scripts/starcoder_example.sh) | 15.5B                    | ✅         | ✅        |
 | [Vicuna-v1.1](/scripts/vicuna_example.sh) | 7B/13B                 | ✅         |           |
 | [LLaVA-v0](/scripts/llava_example.sh) | 13B                       | ✅         |           |
-| [VILA](/scripts/vila_example.sh)    | 7B/13B                     | ✅         |           |
 
 Note: We only list models that we have prepare the [AWQ searching results](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo/tree/main) in the table above. AWQ also supports models such as LLaVA-v1.5 7B, and you may need to run the [AWQ search](#usage) on your own to quantize these models.
 
@@ -134,7 +144,7 @@ Note that we perform AWQ using only textual calibration data, depsite we are run
 
 ## Usage
 
-We provide several sample script to run AWQ (please refer to `./scripts`). We use OPT-6.7B as an example.
+We provide several sample script to run AWQ (please refer to `./scripts`). We use Llama3-8B as an example.
 
 1. Perform AWQ search and save search results (we already did it for you):
 ```bash
@@ -169,29 +179,47 @@ python -m awq.entry --model_path /PATH/TO/LLAMA3/llama3-8b \
     --load_quant quant_cache/llama3-8b-w4-g128-awq.pt
 ```
 
-## Results on Vision-Language Models (VILA-7b/13B)
+## Results on Vision-Language Models (VILA-1.5)
 
-AWQ also seamlessly supports large multi-modal models (LMMs). We demonstrate the results on the recent [VILA](https://github.com/Efficient-Large-Model/VILA) model family.
+AWQ also seamlessly supports large multi-modal models (LMMs). We demonstrate the results on the recent [VILA-1.5](https://github.com/Efficient-Large-Model/VILA) model family.
 
-| VILA-7B     | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
+
+| VILA-1.5-3B   | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
 | ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
-| FP16        | 80.3              | 63.1              | 59.6    | 68.0              | 62.6              | 86.3    | 1489.4  | 69.8              | 61.0          | 61.7    | 
-| AWQ-INT4    | 80.1              | 63.0              | 57.8    | 68.3              | 61.9              | 85.3    | 1486.3  | 68.8              | 58.9          | 61.3    |
+| FP16        | 80.4  | 61.5 | 53.5   | 69.0  | 60.4  | 85.9 | 1442.4 | 63.4 | 52.7   | 60.9 |
+| AWQ-INT4    | 80.0  | 61.1 | 53.8   | 67.8  | 60.4  | 85.9 | 1437.3 | 63.3 | 51.4   | 59.8 | 
 
-| VILA-13B    | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
+| VILA-1.5-8B    | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
 | ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
-| FP16        | 80.5              | 63.6              | 63.1    | 70.5              | 64.0              | 86.3    | 1553.6  | 73.8              | 66.7          | 62.8    | 
-| AWQ-INT4    | 80.4              | 63.6              | 63.0    | 71.2              | 63.5              | 87.0    | 1552.9  | 73.6              | 66.3          | 62.2    |
+| FP16        | 80.9  | 61.9 | 58.7   | 79.9  | 66.3  | 84.4 | 1577.01 | 72.3 | 66.2   | 64.2 |
+| AWQ-INT4    | 80.3  | 61.7 | 59.3   | 79.0  | 65.4  | 82.9 | 1593.65 | 71.0 | 64.9   | 64.0 |
+
+| VILA-1.5-13B    | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
+| ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
+| FP16       | 82.8  | 64.3 | 62.6   | 80.1  | 65.0  | 86.3 | 1569.55 | 74.9 | 66.3   | 65.1 |
+| AWQ-INT4    | 82.7  | 64.5 | 63.3   | 79.7  | 64.7  | 86.7 | 1531.35 | 74.7 | 66.7   | 65.1 |
+
+
+| VILA-1.5-40B    | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
+| ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
+| FP16      | 84.3  | 64.6 | 62.2   | 87.2  | 73.6  | 87.3 | 1726.82 | 82.4 | 80.2   | 69.1 |
+| AWQ-INT4   | 84.1  | 64.4 | 61.3   | 86.7  | 73.2  | 88.2 | 1714.79 | 83.2 | 79.6   | 68.9 | 
 
 
 ## Inference speed ( Token/sec )
 
-| $~~~~~~$ | Precision |  A100 | 4090 | Orin |
-| --- | --- |--- | --- | --- |
-| VILA-7B | fp16 | 81.6 | 58.5 | 11.5 |
-| VILA-7B-AWQ| int4  |155.3| 168.1| 35.6 |
-| VILA-13B | fp16 | 48.5 | OOM | 6.1 |
-| VILA-13B-AWQ | int4  | 102.1| 99.0| 17.5 |
+| $~~~~~~$               | Precision | A100  | 4090  | Orin |
+| ---------------------- | --------- | ----- | ----- | ---- |
+| VILA1.5-3B           | fp16      | 104.6 | 137.6 | 25.4 |
+| VILA1.5-3B-AWQ       | int4      | 182.8 | 215.5 | 42.5 |
+| VILA1.5-3B-S2        | fp16      | 104.3 | 137.2 | 24.6 |
+| VILA1.5-3B-S2-AWQ    | int4      | 180.2 | 219.3 | 40.1 |
+| Llama-3-VILA1.5-8B     | fp16      | 74.9  | 57.4  | 10.2 |
+| Llama-3-VILA1.5-8B-AWQ | int4      | 168.9 | 150.2 | 28.7 |
+| VILA1.5-13B            | fp16      | 50.9  | OOM   | 6.1  |
+| VILA1.5-13B-AWQ        | int4      | 115.9 | 105.7 | 20.6 |
+| VILA1.5-40B            | fp16      | OOM  | OOM   | --  |
+| VILA1.5-40B-AWQ        | int4      | 57.0 | OOM | -- |
 
 
 ## Reference
@@ -216,4 +244,6 @@ If you find AWQ useful or relevant to your research, please kindly cite our pape
 [Vicuna and FastChat](https://github.com/lm-sys/FastChat#readme)
 
 [LLaVA: Large Language and Vision Assistant](https://github.com/haotian-liu/LLaVA)
+
+[VILA: On Pre-training for Visual Language Models](https://github.com/Efficient-Large-Model/VILA)
 

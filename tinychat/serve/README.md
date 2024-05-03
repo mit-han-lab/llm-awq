@@ -9,14 +9,14 @@ python -m tinychat.serve.controller --host 0.0.0.0 --port 10000
 
 #### Launch gradio web server.
 ```bash
-python -m tinychat.serve.gradio_web_server --controller http://localhost:10000 --model-list-mode reload --share
+python -m tinychat.serve.gradio_web_server --controller http://localhost:10000 --model-list-mode reload --share --auto-pad-image-token
 ```
 After launching this script, the web interface will be served on your machine and you can access it with a public URL (or localhost URL).
 
 #### Launch a model worker
 
 ```bash
-python -m tinychat.serve.model_worker --host 0.0.0.0 --controller http://localhost:10000 --port 40000 --worker http://localhost:40000 --model-path <path-to-fp16-hf-model> --quant-path <path-to-awq-checkpoint>
+python -m tinychat.serve.model_worker_new --host 0.0.0.0 --controller http://localhost:10000 --port 40000 --worker http://localhost:40000 --model-path <path-to-fp16-hf-model> --quant-path <path-to-awq-checkpoint>
 ```
 
 Note: You can launch multiple model workers onto the same web server. And please remember to specify different ports for each model worker.

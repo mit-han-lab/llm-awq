@@ -53,6 +53,7 @@ parser.add_argument("--no_zero_point", action="store_true", help="disable zero_p
 parser.add_argument("--q_backend", type=str, default="fake", choices=["fake", "real"])
 # save/load real quantized weights
 parser.add_argument("--dump_quant", type=str, default=None, help="save quantized model")
+parser.add_argument("--dump_fake", type=str, default=None, help="save fake-quantized model")
 parser.add_argument("--load_quant", type=str, default=None, help="load quantized model")
 # apply/save/load awq
 parser.add_argument("--run_awq", action="store_true", help="perform awq search process")
@@ -62,7 +63,13 @@ parser.add_argument(
 parser.add_argument(
     "--load_awq", type=str, default=None, help="load the awq search results"
 )
+parser.add_argument(
+    "--vila-15",
+    action="store_true",
+    help="quantizing vila 1.5",
+)
 args = parser.parse_args()
+vila_10_quant_mode = ("llava" in args.model_path.lower() or "vila" in args.model_path.lower()) and not args.vila_15
 
 max_memory = [v.split(":") for v in (args.max_memory or [])]
 max_memory = {(int(k) if k.isdigit() else k): v for k, v in max_memory}
@@ -86,7 +93,7 @@ def build_model_and_enc(model_path):
     print(f"* Building model {model_path}")
 
     # all hf model
-    if "llava" in model_path.lower() or "vila" in model_path.lower():
+    if vila_10_quant_mode:
         from llava.model.builder import load_pretrained_model
         from llava.mm_utils import get_model_name_from_path
 
@@ -150,7 +157,7 @@ def build_model_and_enc(model_path):
         args.run_awq &= not args.load_awq  # if load_awq, no need to run awq
         # Init model on CPU:
         kwargs = {"torch_dtype": torch.float16, "low_cpu_mem_usage": True}
-        if not ("llava" in model_path.lower() or "vila" in model_path.lower()):
+        if not vila_10_quant_mode:
             model = AutoModelForCausalLM.from_pretrained(
                 model_path, config=config, trust_remote_code=True, **kwargs
             )
@@ -189,6 +196,9 @@ def build_model_and_enc(model_path):
                     args.dump_quant is None
                 ), "Need to use real quantization to dump quantized weights"
                 pseudo_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)
+                if args.dump_fake:
+                    model.save_pretrained(args.dump_fake)
+                    print("Pseudo-quantized models saved at", args.dump_fake)
             elif args.q_backend == "real":  # real quantization
                 real_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)
                 if args.dump_quant:

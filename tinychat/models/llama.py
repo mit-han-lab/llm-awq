@@ -321,7 +321,7 @@ class Transformer(nn.Module):
 class LlamaForCausalLM(nn.Module):
     def __init__(self, params):
         super().__init__()
-        self.params = params
+        self.config = params
         self.model = Transformer(params)
         self.lm_head = nn.Linear(params.hidden_size, params.vocab_size, bias=False)
 

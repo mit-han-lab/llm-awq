@@ -6,22 +6,23 @@ from tinychat.utils.constants import (
 
 
 def get_image_token(model, model_name):
-    if "llava" in model_name.lower():
-        return LLAVA_DEFAULT_IMAGE_TOKEN + "\\n "
-    elif "vila" in model_name.lower():
-        vision_config = model.get_vision_tower().vision_tower.config
-        image_token_len = (vision_config.image_size // vision_config.patch_size) ** 2
-        if (
-            "downsample" in model.config.mm_projector_type
-            or "ds" in model.config.mm_projector_type
-        ):
-            image_token_len = image_token_len // 4
-        if "p32" in model_name:  # extra leading patches
-            image_token_len += 32
-        elif "se" in model.config.mm_projector_type:
-            image_token_len += 2
-        return LLAVA_DEFAULT_IMAGE_PATCH_TOKEN * image_token_len + "\\n "
-    return ""
+    return LLAVA_DEFAULT_IMAGE_TOKEN + "\\n "
+    # if "llava" in model_name.lower():
+    #     return LLAVA_DEFAULT_IMAGE_TOKEN + "\\n "
+    # elif "vila" in model_name.lower():
+    #     vision_config = model.get_vision_tower().vision_tower.config
+    #     image_token_len = (vision_config.image_size // vision_config.patch_size) ** 2
+    #     if (
+    #         "downsample" in model.config.mm_projector_type
+    #         or "ds" in model.config.mm_projector_type
+    #     ):
+    #         image_token_len = image_token_len // 4
+    #     if "p32" in model_name:  # extra leading patches
+    #         image_token_len += 32
+    #     elif "se" in model.config.mm_projector_type:
+    #         image_token_len += 2
+    #     return LLAVA_DEFAULT_IMAGE_PATCH_TOKEN * image_token_len + "\\n "
+    # return ""
 
 
 class BasePrompter:
@@ -201,6 +202,27 @@ class LlavaLlamaPrompter(BasePrompter):
         super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter)
 
 
+class LlavaLlama3Prompter(BasePrompter):
+    """
+    Example:
+    <|start_header_id|>user<|end_header_id|>
+
+    Show me some attractions in Boston.<|eot_id|>
+
+    <|start_header_id|>assistant<|end_header_id|>
+
+    """
+    def __init__(self):
+        system_inst = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are a helpful language and vision assistant. " + \
+            "You are able to understand the visual content that the user provides, " + \
+            "and assist the user with a variety of tasks using natural language."
+        role1 = "<|start_header_id|>user<|end_header_id|>\n\n"
+        role2 = "<|start_header_id|>assistant<|end_header_id|>\n\n"
+        sen_spliter = "<|end_of_text|>"
+        qa_spliter = ""
+        colon = ""
+        super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon)
+
 class FalconSimplePrompter(BasePrompter):
     def __init__(self):
         system_inst = None
@@ -262,7 +284,11 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
         if "vicuna" in model_path.lower():
             return VicunaPrompter()
         elif ("llama-3" in model_path.lower() or "llama3" in model_path.lower()) and "30b" not in model_path.lower():
-            return Llama3Prompter()
+            if "vila" in model_path.lower():
+                # with system prompt by default
+                return LlavaLlama3Prompter()
+            else:
+                return Llama3Prompter()
         elif "llava" in model_path.lower() or "vila" in model_path.lower():
             return LlavaLlamaPrompter()
         else:
