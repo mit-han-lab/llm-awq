@@ -17,7 +17,10 @@ def tune_llava_patch_embedding(vision_tower, device):
     # run the llava_patch_embedding layer to pre-tune the kernel configuration
     # Without this pre-tuning, the embedding layer can cause significant slowdown due to cuDNN tuning.
     device = vision_tower.device
-    patch_embedding = vision_tower.vision_tower.vision_model.embeddings.patch_embedding
+    if "intern" not in vision_tower.__class__.__name__.lower():
+        patch_embedding = vision_tower.vision_tower.vision_model.embeddings.patch_embedding
+    else:
+        patch_embedding = vision_tower.vision_tower.embeddings.patch_embedding
     patch_embedding = patch_embedding.to(device)
     image = (
         torch.randn((1, patch_embedding.in_channels, 336, 336))

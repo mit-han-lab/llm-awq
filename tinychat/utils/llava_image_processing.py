@@ -96,9 +96,18 @@ def process_images(images, image_processor, model_cfg):
             image = image_processor.preprocess(image, return_tensors="pt")[
                 "pixel_values"
             ][0]
-            new_images.append(image)
+            if "intern" in image_processor.__class__.__name__.lower():
+                # special case
+                new_images.append(image.unsqueeze(0))
+            else:
+                new_images.append(image)
     else:
-        return image_processor(images, return_tensors="pt")["pixel_values"]
+        ret = image_processor(images, return_tensors="pt")["pixel_values"]
+        if "intern" in image_processor.__class__.__name__.lower():
+            # special case
+            ret = [x.unsqueeze(0) for x in ret]
+        return ret
     if all(x.shape == new_images[0].shape for x in new_images):
         new_images = torch.stack(new_images, dim=0)
+    
     return new_images

@@ -6,6 +6,8 @@ The current release supports:
 
 - Llama-3-8B/70B-instruct;
 
+- VILA-1.5-3B/8B/13B/40B;
+
 - VILA-7B/13B;
 
 - LLaVA-7B/13B;
@@ -40,7 +42,7 @@ The current release supports:
 
 ![TinyChat on Jetson Orin: W4A16 is 3.2x faster than FP16](./figures/orin_example.gif)
 
-**TinyChat also supports inference with vision language models (e.g., VILA, LLaVA). In the following examples, W4A16 quantized models from VILA family are launched with TinyChat.**
+**TinyChat also supports inference with visual language models (e.g., VILA, LLaVA). In the following examples, W4A16 quantized models from VILA family are launched with TinyChat.**
 
 * TinyChat with VILA-13B on RTX 4090 (multi-image inputs supported):
 
@@ -50,6 +52,15 @@ The current release supports:
 
 ![TinyChat with VILA on Orin](./figures/orin_vila_example.gif)
 
+* TinyChat with video captioning:
+
+https://github.com/Efficient-Large-Model/VILA/assets/156256291/c9520943-2478-4f97-bc95-121d625018a6
+
+**Prompt:** Elaborate on the visual and narrative elements of the video in detail.
+
+**Caption:** The video shows a person's hands working on a white surface. They are folding a piece of fabric with a checkered pattern in shades of blue and white. The fabric is being folded into a smaller, more compact shape. The person's fingernails are painted red, and they are wearing a black and red garment. There are also a ruler and a pencil on the surface, suggesting that measurements and precision are involved in the process.
+
+**Online demo:** https://vila.hanlab.ai 
 
 ## Speed Benchmarks
 
@@ -109,17 +120,29 @@ The latency reported in all tables are per-token latency for the generation stag
 
 ## Accuracy Evaluation
 
-We recently evaluated AWQ's performance on Vision Language Models. Here is a summary of VILA results.
+We recently evaluated AWQ's performance on the Visual Language Models. Here is a summary of VILA results.
 
-| VILA-7B     | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
+| VILA-1.5-3B   | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
 | ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
-| FP16        | 80.3              | 63.1              | 59.6    | 68.0              | 62.6              | 86.3    | 1489.4  | 69.8              | 61.0          | 61.7    | 
-| AWQ-INT4    | 80.1              | 63.0              | 57.8    | 68.3              | 61.9              | 85.3    | 1486.3  | 68.8              | 58.9          | 61.3    |
+| FP16        | 80.4  | 61.5 | 53.5   | 69.0  | 60.4  | 85.9 | 1442.4 | 63.4 | 52.7   | 60.9 |
+| AWQ-INT4    | 80.0  | 61.1 | 53.8   | 67.8  | 60.4  | 85.9 | 1437.3 | 63.3 | 51.4   | 59.8 | 
 
-| VILA-13B    | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
+| VILA-1.5-8B    | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
 | ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
-| FP16        | 80.5              | 63.6              | 63.1    | 70.5              | 64.0              | 86.3    | 1553.6  | 73.8              | 66.7          | 62.8    | 
-| AWQ-INT4    | 80.4              | 63.6              | 63.0    | 71.2              | 63.5              | 87.0    | 1552.9  | 73.6              | 66.3          | 62.2    |
+| FP16        | 80.9  | 61.9 | 58.7   | 79.9  | 66.3  | 84.4 | 1577.01 | 72.3 | 66.2   | 64.2 |
+| AWQ-INT4    | 80.3  | 61.7 | 59.3   | 79.0  | 65.4  | 82.9 | 1593.65 | 71.0 | 64.9   | 64.0 |
+
+| VILA-1.5-13B    | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
+| ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
+| FP16       | 82.8  | 64.3 | 62.6   | 80.1  | 65.0  | 86.3 | 1569.55 | 74.9 | 66.3   | 65.1 |
+| AWQ-INT4    | 82.7  | 64.5 | 63.3   | 79.7  | 64.7  | 86.7 | 1531.35 | 74.7 | 66.7   | 65.1 |
+
+
+| VILA-1.5-40B    | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
+| ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
+| FP16      | 84.3  | 64.6 | 62.2   | 87.2  | 73.6  | 87.3 | 1726.82 | 82.4 | 80.2   | 69.1 |
+| AWQ-INT4   | 84.1  | 64.4 | 61.3   | 86.7  | 73.2  | 88.2 | 1714.79 | 83.2 | 79.6   | 68.9 | 
+
 
 ## Usage
 
@@ -220,33 +243,54 @@ python benchmark.py --model_type llama \
 
 Note: The kv caches in the current implementation are pre-allocated. So if you run out of memory, it might be the case that the kv cache is too large. To solve the problem, you may pass in `--max_seq_len [a smaller number]`.
 
-### Support VLM models (VILA & LLaVA)
+### Support Visual Language Models (VILA-1.5, VILA, LLaVA)
 
-Our TinyChat also supports vision language models. Follow the instructions below to run VLMs on your own devices!
+Our TinyChat also supports visual language models. Follow the instructions below to run VLMs on your own devices!
 
 Step 1-3 are same as the deployment for Language-only models.
 
 1. Follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies.
 
-2. Download the pretrained VLMs (VILA or LLaVA).
+2. Download the pretrained VLMs (VILA).
 
 3. Quantize the VLMs with AWQ and get the quantized checkpoint in `quant_cache`. We also provide a [sample script](../scripts/vila_example.sh) for this step.
 
-4. Run the TinyChat demo for VLMs (with vlm_demo.py):
+4. Run the TinyChat demo for VLMs (with vlm_demo_new.py for VILA-1.5, vlm_demo.py for VILA and LLaVA):
 
 ```bash
 cd tinychat
-python vlm_demo.py \
-    --model-path /PATH/TO/VILA/VILA-13B \
-    --quant-path quant_cache/vila-13b-w4-g128-awq.pt \ 
+python vlm_demo_new.py \
+    --model-path /PATH/TO/VILA/VILA-1.5-13B \
+    --quant-path quant_cache/vila-1.5-13b-w4-g128-awq.pt \ 
     --precision W4A16 \
     --image-file /PATH/TO/INPUT/IMAGE \
     --vis-image #Optional
 ```
 
+Alternatively, one may also skip the quantization process and directy download the quantized VILA-1.5 checkpoints from [here](https://huggingface.co/Efficient-Large-Model). Take VILA-1.5-13B as an example, after running:
+
+```bash
+cd tinychat
+git clone https://huggingface.co/Efficient-Large-Model/VILA1.5-13b-AWQ
+```
+
+One may run:
+```bash
+python vlm_demo_new.py \
+    --model-path VILA1.5-13b-AWQ \
+    --quant-path VILA1.5-13b-AWQ/llm \ 
+    --precision W4A16 \
+    --image-file /PATH/TO/INPUT/IMAGE \
+    --vis-image #Optional
+```
+
+to run the terminal demo directly.
+
 Note: if you enable `--vis-image` mode, TinyChat will print input images directly in your terminal. You may need to install [termvisage](https://github.com/AnonymouX47/termvisage) to enable this mode. A [terminal emulator](https://github.com/AnonymouX47/termvisage?tab=readme-ov-file#requirements) is also required.
 
 Note: VILA model family supports multi-image inputs. You can input multiple images in `/PATH/TO/INPUT/IMAGE` above, each image should be seperated by `,`.
+
+
 
 
 ## Reference
