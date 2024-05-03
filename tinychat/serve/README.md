@@ -17,6 +17,7 @@ After launching this script, the web interface will be served on your machine an
 
 ```bash
 python -m tinychat.serve.model_worker_new --host 0.0.0.0 --controller http://localhost:10000 --port 40000 --worker http://localhost:40000 --model-path <path-to-fp16-hf-model> --quant-path <path-to-awq-checkpoint>
+# Please change tinychat.serve.model_worker_new to tinychat.serve.model_worker if you want to serve VILA rather than VILA-1.5
 ```
 
 Note: You can launch multiple model workers onto the same web server. And please remember to specify different ports for each model worker.
