@@ -1,7 +1,7 @@
 MODEL_PATH=/data/lujunli/hf_download/
 MODEL_NAME=Phi-3-mini-128k-instruct
 
-# export CUDA_VISIBLE_DEVICES=1,2
+export CUDA_VISIBLE_DEVICES=1,2
 
 # # Perform AWQ search and save search results (we already did it for you):
 # mkdir -p awq_cache
@@ -17,6 +17,7 @@ MODEL_NAME=Phi-3-mini-128k-instruct
 #     --q_backend real --dump_quant quant_cache/phi-3-chat-w4-g128-awq.pt
 
 # # Run the TinyChat demo:
+
 CUDA_VISIBLE_DEVICES=1 python demo.py --model_type phi3 \
     --model_path $MODEL_PATH/$MODEL_NAME \
     --q_group_size 128 --load_quant quant_cache/phi-3-chat-w4-g128-awq-v2.pt \

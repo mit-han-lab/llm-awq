@@ -14,7 +14,7 @@ from transformers import Phi3ForCausalLM
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # opt_params in TinyLLMEngine
 gen_params = AttributeDict(
