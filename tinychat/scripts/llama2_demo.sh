@@ -2,10 +2,10 @@ MODEL_PATH=/data/llm/checkpoints/llama2-hf
 MODEL_NAME=llama-2-7b-chat
 
 # # Perform AWQ search and save search results (we already did it for you):
-# mkdir -p awq_cache
-# python -m awq.entry --model_path $MODEL_PATH/$MODEL_NAME \
-#     --w_bit 4 --q_group_size 128 \
-#     --run_awq --dump_awq awq_cache/llama-2-7b-chat-w4-g128.pt
+mkdir -p awq_cache
+python -m awq.entry --model_path $MODEL_PATH/$MODEL_NAME \
+    --w_bit 4 --q_group_size 128 \
+    --run_awq --dump_awq awq_cache/llama-2-7b-chat-w4-g128.pt
 
 # Generate real quantized weights (INT4):
 mkdir -p quant_cache
