@@ -127,7 +127,7 @@ cd ..
 
 3. Clone and Install AWQ
 ```
-git clone https://github.com/mit-han-lab/llm-awq
+git clone -b nv_laptop https://github.com/mit-han-lab/llm-awq
 cd llm-awq
 bash install.sh
 ```
