@@ -62,10 +62,11 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
   - [News](#news)
   - [Contents](#contents)
   - [Install](#install)
+    - [Run VILA on Laptop](#run-vila-on-laptop)
   - [AWQ Model Zoo](#awq-model-zoo)
   - [Examples](#examples)
   - [Usage](#usage)
-  - [Results on Vision-Language Models (VILA-7b/13B)](#results-on-vision-language-models-vila-7b13b)
+  - [Results on Vision-Language Models (VILA-1.5)](#results-on-vision-language-models-vila-15)
   - [Inference speed ( Token/sec )](#inference-speed--tokensec-)
   - [Reference](#reference)
   - [Related Projects](#related-projects)
@@ -105,6 +106,44 @@ python setup.py install
 git clone git@github.com:Efficient-Large-Model/VILA.git
 cd VILA
 pip install -e .
+```
+
+### Run VILA on Laptop
+
+1. Prepare conda environment
+```
+conda create -n AWQ-VILA python=3.10 -y
+conda activate AWQ-VILA
+pip install --upgrade pip  # enable PEP 660 support
+```
+
+2. Clone and Install VILA
+```
+git clone git@github.com:NVlabs/VILA.git
+cd VILA
+pip install -e .
+cd ..
+```
+
+3. Clone and Install AWQ
+```
+git clone https://github.com/mit-han-lab/llm-awq
+cd llm-awq
+bash install.sh
+```
+
+4. Download VILA model (e.g., Llama-3-VILA1.5-8b-AWQ)
+```
+cd vila_helper
+bash download_vila.sh Llama-3-VILA1.5-8b-AWQ
+```
+
+Note: If git-lfs is not installed, please use `sudo apt-get update` and `sudo apt-get install git-lfs` to install.
+
+
+5. Launch the VILA gradio demo
+```
+bash vila_launcher.sh Llama-3-VILA1.5-8b-AWQ/
 ```
 
 ## AWQ Model Zoo

@@ -583,7 +583,7 @@ def http_bot(
 
 title_markdown = """
 # VILA: On Pre-training for Visual Language Models
-[\[Paper\]](https://arxiv.org/abs/2312.07533)  [\[Github\]](https://github.com/Efficient-Large-Model/VILA)
+[\[Paper\]](https://arxiv.org/abs/2312.07533)  [\[Github\]](https://github.com/NVlabs/VILA)
 ### Powered by [TinyChat](https://github.com/mit-han-lab/llm-awq/tree/main/tinychat) with 4-bit [AWQ](https://arxiv.org/abs/2306.00978).
 """
 
