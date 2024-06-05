@@ -132,10 +132,10 @@ cd llm-awq
 bash install.sh
 ```
 
-4. Download VILA model (e.g., Llama-3-VILA1.5-8b-AWQ)
+1. Download VILA model (e.g., VILA1.5-7b-AWQ)
 ```
 cd vila_helper
-bash download_vila.sh Llama-3-VILA1.5-8b-AWQ
+bash download_vila.sh VILA1.5-7b-AWQ
 ```
 
 Note: If git-lfs is not installed, please use `sudo apt-get update` and `sudo apt-get install git-lfs` to install.
@@ -143,7 +143,7 @@ Note: If git-lfs is not installed, please use `sudo apt-get update` and `sudo ap
 
 5. Launch the VILA gradio demo
 ```
-bash vila_launcher.sh Llama-3-VILA1.5-8b-AWQ/
+bash vila_launcher.sh VILA1.5-7b-AWQ/
 ```
 
 ## AWQ Model Zoo
