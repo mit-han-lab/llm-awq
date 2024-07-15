@@ -110,6 +110,8 @@ pip install -e .
 
 ### Run VILA on Laptop
 
+* Before running the following commands, please make sure that you are under the `nv_laptop` branch of AWQ.
+
 1. Prepare conda environment
 ```
 conda create -n AWQ-VILA python=3.10 -y
