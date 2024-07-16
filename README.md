@@ -72,6 +72,14 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
   - [Reference](#reference)
   - [Related Projects](#related-projects)
 
+## Helpful Links
+
+- [VILA online demo](vila.hanlab.ai): Visual Language Models efficiently supported by AWQ & TinyChat.
+- [LLM on the Edge](https://github.com/mit-han-lab/llm-awq/tree/nv_laptop?tab=readme-ov-file#install): AWQ and TinyChat support edge GPUs such as NVIDIA Jetson Orin.
+- [VLMs on Laptop](https://github.com/mit-han-lab/llm-awq/tree/nv_laptop?tab=readme-ov-file#run-vila-on-laptop): Follow the instructions to deploy VLMs on NVIDIA Laptops with TinyChat.
+- [Gradio Server](https://github.com/mit-han-lab/llm-awq/tree/nv_laptop/tinychat/serve#gradio-demo-vila-with-tinychat): Try to build your own VLM online demo with AWQ and TinyChat!
+- [QServe](https://github.com/mit-han-lab/qserve): 🔥 **[New]** Efficient and accurate serving system for large-scale LLM inference.
+  
 ## Install
 
 1. Clone this repository and navigate to AWQ folder
