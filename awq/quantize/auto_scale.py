@@ -6,6 +6,7 @@ from transformers.models.bloom.modeling_bloom import BloomBlock, BloomGelu
 from transformers.models.opt.modeling_opt import OPTDecoderLayer
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm
 from transformers.activations import GELUActivation
+from transformers.models.phi3.modeling_phi3 import Phi3RMSNorm
 
 from .qmodule import ScaledActivation
 from ..utils.module import get_op_by_name, get_op_name, set_op_by_name
@@ -439,6 +440,45 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 inp=input_feat["mlp.dense_4h_to_h"],
             )
         )
+    elif "phi" in str(module.__class__).lower():
+        # attention input
+        scales_list.append(
+            _auto_get_scale(
+                prev_op=module.input_layernorm,
+                layers=[module.self_attn.qkv_proj],
+                inp=input_feat["self_attn.qkv_proj"],
+                module2inspect=module.self_attn,
+                kwargs=module_kwargs,
+            )
+        )
+        # attn out
+        # Please refer to https://github.com/mit-han-lab/llm-awq/pull/67#issue-1850622696
+        if module.self_attn.qkv_proj.weight.shape == module.self_attn.o_proj.weight.shape:
+            scales_list.append(
+                _auto_get_scale(
+                    prev_op=module.self_attn.qkv_proj,
+                    layers=[module.self_attn.o_proj],
+                    inp=input_feat["self_attn.o_proj"],
+                )
+            )
+        # fc1
+        scales_list.append(
+            _auto_get_scale(
+                prev_op=module.post_attention_layernorm,
+                layers=[module.mlp.gate_up_proj],
+                inp=input_feat["mlp.gate_up_proj"],
+                module2inspect=module.mlp,
+            )
+        )
+        # fc2
+        scales_list.append(
+            _auto_get_scale(
+                prev_op=module.mlp.gate_up_proj,
+                layers=[module.mlp.down_proj],
+                inp=input_feat["mlp.down_proj"],
+            )
+        )
+        
     else:
         raise NotImplementedError(f"{type(module)} not supported yet!")
 
@@ -464,6 +504,8 @@ def apply_scale(module, scales_list, input_feat_dict=None):
             new_module = ScaledActivation(prev_op, scales)
             set_op_by_name(module, prev_op_name, new_module)
             scale_gelu_fc(prev_op, layers[0], scales)
+        elif "rmsnorm" in str(prev_op.__class__).lower():
+            scale_ln_fcs(prev_op, layers, scales)
         else:
             raise NotImplementedError(f"prev_op {type(prev_op)} not supported yet!")
 

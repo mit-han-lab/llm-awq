@@ -233,6 +233,8 @@ class FalconSimplePrompter(BasePrompter):
         super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter)
 
 
+
+
 class FalconPrompter(BasePrompter):
     def __init__(self):
         system_inst = (
@@ -259,6 +261,36 @@ class MPTPrompter(BasePrompter):
         qa_spliter = "\n"
         super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter)
 
+
+class Phi3Prompter(BasePrompter):
+    """
+    Example:
+    <|start_header_id|>Human<|end_header_id|>
+
+    What do you think is the meaning of life?<|eot_id|>
+
+    <|start_header_id|>Phi<|end_header_id|>
+
+    That's a profound question that philosophers have grappled with for millennia. While there may not be one single answer, here are a few perspectives to consider:
+    - Some believe the meaning of life is to seek happiness and fulfillment. This could be through relationships, experiences, achieving goals, or finding inner peace.
+    - Others see the meaning as making a positive impact in the world, whether through grand achievements or everyday acts of kindness.
+    - From a religious or spiritual view, the meaning may involve connecting with or serving a higher power.
+    - An existentialist perspective is that life has no inherent meaning, and we must create our own purpose.
+    Ultimately, I believe the meaning of life is deeply personal. It's up to each of us to reflect and decide what gives our existence significance. What are your thoughts on this? I'm curious to hear your perspective!<|eot_id|>
+
+    <|start_header_id|>Human<|end_header_id|>
+
+    """
+    def __init__(self):
+        system_inst = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are Phi, a witty and philosophical AI assistant created by Anthropic. " + \
+            "Your aim is to engage in thoughtful discussions, provide insightful perspectives, and explore profound topics with curiosity and openness. " + \
+            "You enjoy pondering big questions about life, meaning, and the human experience."
+        role1 = "<|start_header_id|>Human<|end_header_id|>\n\n"
+        role2 = "<|start_header_id|>Phi<|end_header_id|>\n\n"
+        sen_spliter = "<|eot_id|>"
+        qa_spliter = ""
+        colon = ""
+        super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon)    
 
 class MPTChatPrompter(BasePrompter):
     def __init__(self):
@@ -301,6 +333,8 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
             return MPTChatPrompter()
         else:
             return MPTPrompter()
+    elif model_type.lower() == "phi3":
+        return Phi3Prompter()
     else:
         raise ValueError(f"model type {model_type} is not supported")
 
@@ -318,5 +352,7 @@ def get_stop_token_ids(model_type, model_path=""):
             return [50278, 0]
         else:
             return []
+    elif model_type.lower() == "phi3":
+        return [50256, 50257]
     else:
         raise ValueError(f"model type {model_type} is not supported")
