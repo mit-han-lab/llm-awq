@@ -105,6 +105,7 @@ __inline__ __device__ void ldmatrix_m8n8_x4_trans_b16(half *shared_warp, int ax0
       : "r"(addr));
 }
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 __inline__ __device__ void cp_async_cg_A(uint32_t smem_int_ptr, const uint4 *__restrict__ src, bool mask)
 {
   const int cp_size = 16;
@@ -117,14 +118,37 @@ __inline__ __device__ void cp_async_cg_A(uint32_t smem_int_ptr, const uint4 *__r
                "l"(src),
                "n"(cp_size));
 }
+#endif
 
 __device__ __inline__ void mma_m16n8k16(float *C_warp, half *A_shared_warp, half *B_shared_warp)
 {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
+  __asm__ __volatile__(
+      "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32"
+      "{%0, %1, %2, %3}, {%4, %5}, {%6}, {%7, %8, %9, %10};"
+      : "=f"(((float *)C_warp)[0]), "=f"(((float *)C_warp)[1]), "=f"(((float *)C_warp)[2]), "=f"(((float *)C_warp)[3])
+      : "r"(((unsigned *)A_shared_warp)[0]), "r"(((unsigned *)A_shared_warp)[1]),
+        "r"(((unsigned *)B_shared_warp)[0]), 
+        "f"(((float *)C_warp)[0]), "f"(((float *)C_warp)[1]), "f"(((float *)C_warp)[2]), "f"(((float *)C_warp)[3])
+  );
+  __asm__ __volatile__(
+      "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32"
+      "{%0, %1, %2, %3}, {%4, %5}, {%6}, {%7, %8, %9, %10};"
+      : "=f"(((float *)C_warp)[0]), "=f"(((float *)C_warp)[1]), "=f"(((float *)C_warp)[2]), "=f"(((float *)C_warp)[3])
+      : "r"(((unsigned *)A_shared_warp)[2]), "r"(((unsigned *)A_shared_warp)[3]), 
+        "r"(((unsigned *)B_shared_warp)[1]), 
+        "f"(((float *)C_warp)[0]), "f"(((float *)C_warp)[1]), "f"(((float *)C_warp)[2]), "f"(((float *)C_warp)[3])
+  );
+#else
   __asm__ __volatile__(
       "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32"
       "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%10, %11, %12, %13};"
       : "=f"(((float *)C_warp)[0]), "=f"(((float *)C_warp)[1]), "=f"(((float *)C_warp)[2]), "=f"(((float *)C_warp)[3])
-      : "r"(((unsigned *)A_shared_warp)[0]), "r"(((unsigned *)A_shared_warp)[1]), "r"(((unsigned *)A_shared_warp)[2]), "r"(((unsigned *)A_shared_warp)[3]), "r"(((unsigned *)B_shared_warp)[0]), "r"(((unsigned *)B_shared_warp)[1]), "f"(((float *)C_warp)[0]), "f"(((float *)C_warp)[1]), "f"(((float *)C_warp)[2]), "f"(((float *)C_warp)[3]));
+      : "r"(((unsigned *)A_shared_warp)[0]), "r"(((unsigned *)A_shared_warp)[1]), "r"(((unsigned *)A_shared_warp)[2]), "r"(((unsigned *)A_shared_warp)[3]), 
+        "r"(((unsigned *)B_shared_warp)[0]), "r"(((unsigned *)B_shared_warp)[1]), 
+        "f"(((float *)C_warp)[0]), "f"(((float *)C_warp)[1]), "f"(((float *)C_warp)[2]), "f"(((float *)C_warp)[3])
+  );
+#endif
 }
 
 template <int CTA_M, int CTA_N, int CTA_K, int CTA_SIZE, int SHARED_K_ITERS, int STAGES>
@@ -148,12 +172,14 @@ __device__ __inline__ void global_to_share_one_stage_A(half *src, half *dst, int
     int ld_col_swizzled = (ld_col ^ (ld_row) & 7) * PACK_SIZE;
     void *dst_ptr = (void *)(dst + ld_row * kSmemCol + ld_col_swizzled);
     uint4 *src_ptr = (uint4 *)(src + (ld_row + cta_offset_m) * global_ncols + ld_col * PACK_SIZE + global_iter_k * CTA_K + cta_offset_k); // cta_offset_m * global_ncols + global_iter * cta_step_m_or_n * global_ncols + threadIdx.y * warp_step_m_or_n * global_ncols + (threadIdx.x / threads_per_row) * global_ncols + global_iter_k * CTA_K + (threadIdx.x % threads_per_row) * PACK_SIZE);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     if constexpr (STAGES > 1)
     {
       uint32_t addr = cast_smem_ptr_to_uint(dst_ptr);
       cp_async_cg_A(addr, src_ptr, local_mask & (ld_row + cta_offset_m < global_nrows));
     }
     else
+#endif
     {
       if (local_mask & (ld_row + cta_offset_m < global_nrows))
         *(uint4 *)dst_ptr = *src_ptr;
@@ -183,12 +209,14 @@ __device__ __inline__ void global_to_share_one_stage_B(half *src, half *dst, int
     int ld_col_swizzled = ld_col ^ (ld_row % 2) & 7;
     void *dst_ptr = (void *)(dst + (ld_row * kSmemCol + ld_col_swizzled * PACK_SIZE));
     uint4 *src_ptr = (uint4 *)(src + global_iter_k * CTA_K + cta_offset_n / kInterleave * global_ncols + ld_row * global_ncols + ld_col * PACK_SIZE + cta_offset_k);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     if constexpr (STAGES > 1)
     {
       uint32_t addr = cast_smem_ptr_to_uint(dst_ptr);
       cp_async_cg_A(addr, src_ptr, local_mask);
     }
     else
+#endif
     {
       if (local_mask)
         *(uint4 *)dst_ptr = *src_ptr;
@@ -212,6 +240,7 @@ __device__ __inline__ void global_to_share_one_stage_scales(half *src, half *dst
   uint4 *src_ptr = (uint4 *)(src + g_idx * global_ncols + cta_offset_n + (threadIdx.x / threads_per_row) * global_ncols + (threadIdx.x % threads_per_row) * PACK_SIZE);
   void *dst_ptr_z = (void *)(dst_z + (threadIdx.x / threads_per_row) * kSmemCol + (threadIdx.x % threads_per_row) * PACK_SIZE);
   uint4 *src_ptr_z = (uint4 *)(src_z + g_idx * global_ncols + cta_offset_n + (threadIdx.x / threads_per_row) * global_ncols + (threadIdx.x % threads_per_row) * PACK_SIZE);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   if (STAGES > 1)
   {
     uint32_t addr = cast_smem_ptr_to_uint(dst_ptr);
@@ -220,6 +249,7 @@ __device__ __inline__ void global_to_share_one_stage_scales(half *src, half *dst
     cp_async_cg_A(addr_z, src_ptr_z, local_mask);
   }
   else
+#endif
   {
     if (local_mask)
     {
@@ -606,12 +636,14 @@ __device__ __inline__ void global_to_share_one_stage_A_T2(half *src, half *dst, 
     int ld_col_swizzled = (ld_col ^ (ld_row) & 7) * PACK_SIZE;
     void *dst_ptr = (void *)(dst + ld_row * kSmemCol + ld_col_swizzled);
     uint4 *src_ptr = (uint4 *)(src + (ld_row + cta_offset_m) * global_ncols + ld_col * PACK_SIZE + global_iter_k * CTA_K); // cta_offset_m * global_ncols + global_iter * cta_step_m_or_n * global_ncols + threadIdx.y * warp_step_m_or_n * global_ncols + (threadIdx.x / threads_per_row) * global_ncols + global_iter_k * CTA_K + (threadIdx.x % threads_per_row) * PACK_SIZE);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     if constexpr (STAGES > 1)
     {
       uint32_t addr = cast_smem_ptr_to_uint(dst_ptr);
       cp_async_cg_A(addr, src_ptr, local_mask & (ld_row + cta_offset_m < global_nrows));
     }
     else
+#endif
     {
       if (local_mask & (ld_row + cta_offset_m < global_nrows))
         *(uint4 *)dst_ptr = *src_ptr;
@@ -641,12 +673,14 @@ __device__ __inline__ void global_to_share_one_stage_B_T2(half *src, half *dst, 
     int ld_col_swizzled = ld_col ^ (ld_row % 2) & 7;
     void *dst_ptr = (void *)(dst + (ld_row * kSmemCol + ld_col_swizzled * PACK_SIZE));
     uint4 *src_ptr = (uint4 *)(src + global_iter_k * CTA_K + cta_offset_n / kInterleave * global_ncols + ld_row * global_ncols + ld_col * PACK_SIZE);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     if constexpr (STAGES > 1)
     {
       uint32_t addr = cast_smem_ptr_to_uint(dst_ptr);
       cp_async_cg_A(addr, src_ptr, local_mask);
     }
     else
+#endif
     {
       if (local_mask)
         *(uint4 *)dst_ptr = *src_ptr;
@@ -669,6 +703,7 @@ __device__ __inline__ void global_to_share_one_stage_scales_T2(half *src, half *
   uint4 *src_ptr = (uint4 *)(src + g_idx * global_ncols + cta_offset_n + (threadIdx.x % threads_per_row) * PACK_SIZE);
   void *dst_ptr_z = (void *)(dst_z + (threadIdx.x % threads_per_row) * PACK_SIZE);
   uint4 *src_ptr_z = (uint4 *)(src_z + g_idx * global_ncols + cta_offset_n + (threadIdx.x % threads_per_row) * PACK_SIZE);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   if (STAGES > 1)
   {
     uint32_t addr = cast_smem_ptr_to_uint(dst_ptr);
@@ -677,6 +712,7 @@ __device__ __inline__ void global_to_share_one_stage_scales_T2(half *src, half *
     cp_async_cg_A(addr_z, src_ptr_z, local_mask);
   }
   else
+#endif
   {
     if (local_mask)
     {
