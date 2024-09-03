@@ -80,22 +80,33 @@ class BasePrompter:
     def insert_prompt(self, input_prompt):
         self.model_input = self.template.format(prompt=input_prompt)
 
-    def update_template(self, outputs):
-        self.template = (
-            self.model_input
-            + " "
-            + outputs.strip()
-            + self.stopper
-            + self.qa_spliter
-            + self.starter
-            + self.role1
-            + ": {prompt}"
-            + self.stopper
-            + self.sen_spliter
-            + self.starter
-            + self.role2
-            + ":"
-        )
+    def update_template(self, outputs,promptcache):
+        if promptcache:
+            self.template = (
+                self.role1
+                + ": {prompt}"
+                + self.stopper
+                + self.sen_spliter#blank space
+                + self.starter
+                + self.role2
+                + ":"
+            )
+        else:
+            self.template = (
+                self.model_input
+                + " "
+                + outputs.strip()
+                + self.stopper
+                + self.qa_spliter
+                + self.starter
+                + self.role1
+                + ": {prompt}"
+                + self.stopper
+                + self.sen_spliter
+                + self.starter
+                + self.role2
+                + ":"
+            )
         self.model_input = None
 
 

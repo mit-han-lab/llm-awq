@@ -153,6 +153,7 @@ class LlamaAttentionFused(nn.Module):
         start_pos: int,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
+        decodinglike_context:bool,
     ):
         bsz, seqlen, _ = x.shape
         # xqkv = self.qkv_proj(x)
@@ -183,9 +184,14 @@ class LlamaAttentionFused(nn.Module):
             self.cache_v[:bsz, :, start_pos : start_pos + seqlen, :] = values_store
             self.cache_k[:bsz, :, :, start_pos : start_pos + seqlen, :] = keys_store
 
-            keys = xk
-            values = xv
-
+            if decodinglike_context:
+                keys=self.cache_k[:, :, :,0 : start_pos + seqlen, :]
+                keys=keys.permute(0,3,1,2,4).reshape(bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim).contiguous()
+                values=self.cache_v[:, :, 0 : start_pos + seqlen, :]
+                values=values.transpose(2, 1).reshape(bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim).contiguous()
+            else:
+                keys = xk
+                values = xv
             keys = torch.repeat_interleave(
                 keys, dim=2, repeats=self.num_key_value_groups
             )
@@ -259,9 +265,10 @@ class TransformerBlock(nn.Module):
         start_pos: int,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
+        decodinglike_context:bool,
     ):
         h = x + self.self_attn.forward(
-            self.input_layernorm(x), start_pos, freqs_cis, mask
+            self.input_layernorm(x), start_pos, freqs_cis, mask,decodinglike_context
         )
         out = h + self.mlp.forward(self.post_attention_layernorm(h))
         return out
@@ -297,7 +304,7 @@ class Transformer(nn.Module):
 
     @torch.inference_mode()
     def forward(
-        self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor = None
+        self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor = None,decodinglike_context: bool=False
     ):
         if tokens is not None:
             _bsz, seqlen = tokens.shape
@@ -311,9 +318,13 @@ class Transformer(nn.Module):
         mask = None
         if seqlen > 1:
             mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=h.device)
-            mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
+            mask = torch.triu(mask, diagonal=1).type_as(h)
+            if decodinglike_context:
+                mask_history=torch.zeros((1, 1, seqlen, start_pos), dtype=torch.float16, device=h.device).type_as(h)
+                mask=torch.cat((mask_history,mask),dim=-1)                
         for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, mask)
+            h = layer(h, start_pos, freqs_cis, mask, decodinglike_context)
+        h=h[:,-1:,:]#Only the last token is useful
         h = self.norm(h)
         return h
 
@@ -327,8 +338,8 @@ class LlamaForCausalLM(nn.Module):
 
     @torch.inference_mode()
     def forward(
-        self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor = None
+        self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor = None,decodinglike_context = False
     ):
-        h = self.model(tokens, start_pos, inputs_embeds)
+        h = self.model(tokens, start_pos, inputs_embeds,decodinglike_context)
         output = self.lm_head(h)  # only compute last logits
         return output.float()

@@ -37,15 +37,20 @@ def StreamGenerator(
     model,
     tokenizer,
     input: str,
+    start_pos:int,
     gen_params: dict,
     device: str = "cuda:0",
     stream_interval: int = 2,
     echo: bool = False,
     stop_token_ids=[],
+    promptcache=False,
+    decodinglike_context=False,
 ):
-    input_ids = tokenizer(input).input_ids
+    if promptcache and start_pos!=0:
+        input_ids = tokenizer(input).input_ids[1:]#tokenizer will add a <s> at the beginning, so to delete it (important for promptcache)
+    else:
+        input_ids = tokenizer(input).input_ids
     input_echo_len = len(input_ids)
-    # print(input_ids)
     output_ids = list(input_ids)
     len_input = len(input)
 
@@ -60,7 +65,6 @@ def StreamGenerator(
     past_key_values = out = None
     stop_token_ids.append(tokenizer.eos_token_id)
     max_new_tokens = gen_params.n_predict
-    start_pos = 0
     for i in range(max_new_tokens):
         torch.cuda.synchronize()
         t_st = time.time()
@@ -88,8 +92,8 @@ def StreamGenerator(
                 logits = out.logits
                 past_key_values = out.past_key_values
         else:
-            out = model(inputs, start_pos=start_pos)
-            start_pos += out.shape[1]
+            out = model(inputs, start_pos=start_pos,decodinglike_context=decodinglike_context)
+            start_pos += inputs.shape[1]
             logits = out
         torch.cuda.synchronize()
         t_ed = time.time()
@@ -116,7 +120,7 @@ def StreamGenerator(
         global generation_time_list
         if i == 0:
             context_time = t_ed - t_st
-            context_tokens = logits.shape[1]
+            context_tokens = inputs.shape[1]
             generation_time_list = []
         else:
             generation_time_list.append(t_ed - t_st)

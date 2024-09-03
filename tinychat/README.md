@@ -71,7 +71,6 @@ We use the default implementation from Huggingface for the FP16 baseline. The IN
 The latency reported in all tables are per-token latency for the generation stage.
 
 ### A6000 Results
-
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
 | LLaMA-3-8B  | 24.95             | 10.68             | 2.34x   |         
@@ -101,7 +100,6 @@ The latency reported in all tables are per-token latency for the generation stag
 | VILA-13B    | OOM               | 10.01             | --      |
 
 *: The reason why LLaMA-2-7B is slower than Vicuna-7B is because we need a longer prompt (with > 500 tokens) to prevent the model from talking with itself. If we use the benchmarking strategy from exLLaMA (i.e. only 4 context tokens), our speed is around 195 tokens / second.
-
 ### Orin Results
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
@@ -143,10 +141,30 @@ We recently evaluated AWQ's performance on the Visual Language Models. Here is a
 | FP16      | 84.3  | 64.6 | 62.2   | 87.2  | 73.6  | 87.3 | 1726.82 | 82.4 | 80.2   | 69.1 |
 | AWQ-INT4   | 84.1  | 64.4 | 61.3   | 86.7  | 73.2  | 88.2 | 1714.79 | 83.2 | 79.6   | 68.9 | 
 
+## New Optimization of Context Stage
+We have optimized the speed of the context stage and updated our code with several enhancements, including the adoption of flash attention and the elimination of redundant computations. The key optimizations include:
+1. Adopting the flash-attention kernel (currently supports only single-batch operations).
+2. Computing only the last tokens in the final logits layer.
+3. For multi-turn conversations, restricting attention calculations to the newly input tokens during the context stage. (promptcache)
+4. Utilizing history KV caches in the context stage to address the forgetting issue introduced by the third optimization. (decoding-like context)
+
+Under certain conditions, these improvements can result in up to an 8x speedup in TTFT(Time To the First Token) with minor accuracy loss comparing with the old version of TinyChat. We conducted experiments on the Orin GPU, and the detailed results are provided below.
+
+![](./figures/TTFT_Speedup_flash.png)
+![](./figures/TTFT_Speedup_constant_input.png)
+![](./figures/TTFT_Speedup_constant_history.png)
 
 ## Usage
 
-1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies.
+1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies. If you want to use flash-attention, start by installing it with: ```bash
+pip install flash-attn --no-build-isolation```. However, for Orin GPUs, there is no pre-built version available. You will need to build it from source. Follow these commands:
+```bash
+git clone https://github.com/Dao-AILab/flash-attention.git
+cd flash-attention
+sed -i '168 a\    cc_flag.append("-gencode")\n\    cc_flag.append("arch=compute_87,code=sm_87")' setup.py
+python setup.py install
+``` 
+This process may take some time as it involves compiling the code.
 
 2. Download the pretrained instruction-tuned LLMs:
    
@@ -210,6 +228,8 @@ python demo.py --model_type llama \
     --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
     --precision W16A16
 ```
+You can also try using flash-attention along with our promptcache method and the decoding-like context. Use the following three arguments when running demo: ```bash
+--flash --decodinglike --promptcache```. Please note that the decoding-like context is effective only when used in conjunction with promptcache.
 
 The above command works well for most cloud and desktop GPUs, since their CPU and GPU memory space are separated. However, for edge GPUs with shared host and device memory, in order to run larger models (e.g. LLaMA-2-70B on 64GB Orin), it is necessary to break down the pretrained checkpoints into small pieces:
 
@@ -240,9 +260,15 @@ python benchmark.py --model_type llama \
     --model_path /PATH/TO/LLAMA2/llama-2-7b-chat    \
     --q_group_size 128
 ```
-
+We also have a file for benchmarking the context stage of our new methods. You can benchmark TinyChat with flash-attention using: 
+``` bash
+python benchmark_context.py --context_length 16 32 64 128 256 512 1024 2048 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --flash
+```
+To benchmark promptcache and decoding-like context, use:
+```bash
+python benchmark_context.py --context_length 16 32 64 128 256 512 1024 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --question_length 32 --promptcache --decodinglike
+```
 Note: The kv caches in the current implementation are pre-allocated. So if you run out of memory, it might be the case that the kv cache is too large. To solve the problem, you may pass in `--max_seq_len [a smaller number]`.
-
 ### Support Visual Language Models (VILA-1.5, VILA, LLaVA)
 
 Our TinyChat also supports visual language models. Follow the instructions below to run VLMs on your own devices!
