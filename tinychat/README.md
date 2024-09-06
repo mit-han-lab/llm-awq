@@ -156,8 +156,7 @@ Under certain conditions, these improvements can result in up to an 8x speedup i
 
 ## Usage
 
-1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies. If you want to use flash-attention, start by installing it with: ```bash
-pip install flash-attn --no-build-isolation```. However, for Orin GPUs, there is no pre-built version available. You will need to build it from source. Follow these commands:
+1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies. If you want to use flash-attention, start by installing it with: ```pip install flash-attn --no-build-isolation```. However, for Orin GPUs, there is no pre-built version available. You will need to build it from source. Follow these commands:
 ```bash
 git clone https://github.com/Dao-AILab/flash-attention.git
 cd flash-attention
