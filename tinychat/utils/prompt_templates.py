@@ -80,7 +80,7 @@ class BasePrompter:
     def insert_prompt(self, input_prompt):
         self.model_input = self.template.format(prompt=input_prompt)
 
-    def update_template(self, outputs,promptcache):
+    def update_template(self, outputs,promptcache=0):
         if promptcache:
             self.template = (
                 self.role1
