@@ -128,19 +128,12 @@ if __name__ == "__main__":
         help="whether to use flash attention",
     )
     parser.add_argument(
-        "--promptcache",
+        "--chunk_prefill",
         action="store_true",
-        help="Whether to use promptcache. If used, in context stage, the new input questions will not see former, which will lead to speedup but forgetting",
-    )
-    parser.add_argument(
-        "--decodinglike_context",
-        action="store_true",
-        help="If used, in context stage, the history tokens will not be recalculated, greatly speeding up the calculation (only effective with --promptcache)",
+        help="If used, in context stage, the history tokens will not be recalculated, greatly speeding up the calculation",
     )
 
     args = parser.parse_args()
-    if args.decodinglike_context and not args.promptcache:
-        print("Warning: The decodinglike_context is ignored since promptcache method is not used!")
     assert args.model_type.lower() in [
         "llama",
         "falcon",
@@ -238,17 +231,12 @@ if __name__ == "__main__":
     stop_token_ids = get_stop_token_ids(args.model_type, args.model_path)
     count = 0
     start_pos=0
-    # model.model.layers=model.model.layers[::-1]
-    # prompts=['My name is Tom Black!','Tell me a story!','Tell me a joke!','How do you compare MIT and Harvard?',"What's my name?"]
-    # input()
-    # for input_prompt in prompts:
     while True:
         #Get input from the user
         input_prompt = input("USER: ")
         if input_prompt == "":
             print("EXIT...")
             break
-        # print('USER: '+input_prompt)
         model_prompter.insert_prompt(input_prompt)
         output_stream = stream_generator(
             model,
@@ -258,16 +246,15 @@ if __name__ == "__main__":
             gen_params,
             device=args.device,
             stop_token_ids=stop_token_ids,
-            promptcache=args.promptcache,
-            decodinglike_context=(args.decodinglike_context and args.promptcache),
+            chunk_prefill=args.chunk_prefill,
         )
         outputs,total_tokens = stream_output(output_stream)
-        if args.promptcache:
+        if args.chunk_prefill:
             start_pos+=total_tokens
         else:
             start_pos=0
         if (
             args.single_round is not True and args.max_seq_len > 512
         ):  # Only memorize previous conversations when kv_cache_size > 512
-            model_prompter.update_template(outputs,args.promptcache)
+            model_prompter.update_template(outputs,args.chunk_prefill)
         count += 1
