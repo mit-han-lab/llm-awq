@@ -49,8 +49,6 @@ def StreamGenerator(
         input_ids = tokenizer(input).input_ids[1:]#tokenizer will add a <s> at the beginning, so to delete it (important for chunk_prefill)
     else:
         input_ids = tokenizer(input).input_ids
-    print(input_ids)
-    print(len(input_ids))
     input_echo_len = len(input_ids)
     output_ids = list(input_ids)
     len_input = len(input)
