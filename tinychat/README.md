@@ -149,7 +149,7 @@ We have optimized the speed of the context stage and updated our code with sever
 
 Under certain conditions, these improvements can result in up to an 8x speedup in TTFT(Time To the First Token) with minor accuracy loss comparing with the old version of TinyChat. We conducted experiments on the Orin GPU, and the detailed results are provided below. ('promptcache' means restricting attention calculations to the newly input tokens during the context stage for multi-turn conversations, which can induce serious forgetting problem.)
 
-![](./figures/TTFT_Speedup_flash&only_last_logits.png)
+![](./figures/TTFT_Speedup_flash_only_last_logits.png)
 ![](./figures/TTFT_Speedup_constant_input.png)
 ![](./figures/TTFT_Speedup_constant_history.png)
 
