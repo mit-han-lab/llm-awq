@@ -9,10 +9,10 @@ import time
 from transformers import AutoConfig, PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
-from llava.model.utils import auto_upgrade as get_model_config
+from llava.model.utils import get_model_config
 from llava.model.language_model.builder import build_llm_and_tokenizer
 from llava.model.multimodal_encoder.builder import build_vision_tower
-from llava.model.multimodal_projector.builder import build_vision_projector as build_mm_projector
+from llava.model.multimodal_projector.builder import build_mm_projector
 from llava.model.llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
 from .llama import LlamaForCausalLM, Transformer
 
