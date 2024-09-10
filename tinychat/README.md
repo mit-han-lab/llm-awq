@@ -149,7 +149,7 @@ We have optimized the speed of the context stage and updated our code with sever
 
 Under certain conditions, these improvements can result in up to an 8x speedup in TTFT(Time To the First Token) with minor accuracy loss comparing with the old version of TinyChat. We conducted experiments on the Orin GPU, and the detailed results are provided below. ('promptcache' means restricting attention calculations to the newly input tokens during the context stage for multi-turn conversations, which can induce serious forgetting problem.)
 
-![](./figures/TTFT_Speedup_flash.png)
+![](./figures/TTFT_Speedup_flash&only_last_logits.png)
 ![](./figures/TTFT_Speedup_constant_input.png)
 ![](./figures/TTFT_Speedup_constant_history.png)
 
@@ -308,7 +308,7 @@ python vlm_demo_new.py \
     --vis-image #Optional
 ```
 
-to run the terminal demo directly.
+to run the terminal demo directly. You can also use``` --flash --chunk_prefill``` to accelerate.
 
 Note: if you enable `--vis-image` mode, TinyChat will print input images directly in your terminal. You may need to install [termvisage](https://github.com/AnonymouX47/termvisage) to enable this mode. A [terminal emulator](https://github.com/AnonymouX47/termvisage?tab=readme-ov-file#requirements) is also required.
 
