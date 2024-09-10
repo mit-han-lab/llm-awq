@@ -145,10 +145,9 @@ We recently evaluated AWQ's performance on the Visual Language Models. Here is a
 We have optimized the speed of the context stage and updated our code with several enhancements, including the adoption of flash attention and the elimination of redundant computations. The key optimizations include:
 1. Adopting the flash-attention kernel (currently supports only single-batch operations).
 2. Computing only the last tokens in the final logits layer.
-3. For multi-turn conversations, restricting attention calculations to the newly input tokens during the context stage. (promptcache)
-4. Utilizing history KV caches in the context stage to address the forgetting issue introduced by the third optimization. (decoding-like context)
+3. Utilizing history KV caches in the context stage to speed up. (chunk prefill)
 
-Under certain conditions, these improvements can result in up to an 8x speedup in TTFT(Time To the First Token) with minor accuracy loss comparing with the old version of TinyChat. We conducted experiments on the Orin GPU, and the detailed results are provided below.
+Under certain conditions, these improvements can result in up to an 8x speedup in TTFT(Time To the First Token) with minor accuracy loss comparing with the old version of TinyChat. We conducted experiments on the Orin GPU, and the detailed results are provided below. ('promptcache' means restricting attention calculations to the newly input tokens during the context stage for multi-turn conversations, which can induce serious forgetting problem.)
 
 ![](./figures/TTFT_Speedup_flash.png)
 ![](./figures/TTFT_Speedup_constant_input.png)
@@ -227,8 +226,8 @@ python demo.py --model_type llama \
     --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
     --precision W16A16
 ```
-You can also try using flash-attention along with our promptcache method and the decoding-like context. Use the following three arguments when running demo: ```bash
---flash --decodinglike --promptcache```. Please note that the decoding-like context is effective only when used in conjunction with promptcache.
+You can also try using flash-attention along with chunk prefill. Use the following three arguments when running demo: ```bash
+--flash --chunk_prefill```. 
 
 The above command works well for most cloud and desktop GPUs, since their CPU and GPU memory space are separated. However, for edge GPUs with shared host and device memory, in order to run larger models (e.g. LLaMA-2-70B on 64GB Orin), it is necessary to break down the pretrained checkpoints into small pieces:
 
@@ -263,9 +262,9 @@ We also have a file for benchmarking the context stage of our new methods. You c
 ``` bash
 python benchmark_context.py --context_length 16 32 64 128 256 512 1024 2048 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --flash
 ```
-To benchmark promptcache and decoding-like context, use:
+To benchmark chunk prefill, use:
 ```bash
-python benchmark_context.py --context_length 16 32 64 128 256 512 1024 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --question_length 32 --promptcache --decodinglike
+python benchmark_context.py --context_length 16 32 64 128 256 512 1024 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --question_length 32 --chunk_prefill
 ```
 Note: The kv caches in the current implementation are pre-allocated. So if you run out of memory, it might be the case that the kv cache is too large. To solve the problem, you may pass in `--max_seq_len [a smaller number]`.
 ### Support Visual Language Models (VILA-1.5, VILA, LLaVA)

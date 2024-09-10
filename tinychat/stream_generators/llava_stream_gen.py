@@ -88,10 +88,9 @@ def LlavaStreamGenerator(
     echo: bool = False,
     stop_token_ids=[],
     image_tensor: Optional[torch.FloatTensor] = None,
-    promptcache:bool=False,
-    decodinglike_context:bool=False,
+    chunk_prefill:bool=False,
 ):
-    if promptcache and start_pos!=0:#</s>USER:2,11889 while USER:3148,1001
+    if chunk_prefill and start_pos!=0:#</s>USER:2,11889 while USER:3148,1001
         input='</s>'+input
     input_ids = (
         tokenizer_image_token(
@@ -103,11 +102,10 @@ def LlavaStreamGenerator(
         .unsqueeze(0)
         .to(device)
     )
-    if promptcache and start_pos!=0:
+    if chunk_prefill and start_pos!=0:
         input_ids = input_ids[:,2:]#tokenizer will add a <s> at the beginning, so to delete it
     special_token = "<image>" in input
     input_echo_len = len(input_ids)
-    # print(input_ids)
     output_ids = list(input_ids)
     len_input = len(input)
 
@@ -189,7 +187,7 @@ def LlavaStreamGenerator(
                 position_ids=position_ids,
                 attention_mask=attention_mask,
                 special_token=special_token,
-                decodinglike_context=decodinglike_context,
+                chunk_prefill=chunk_prefill,
             )
             start_pos += inputs.shape[1]+195*torch.sum(inputs[0]== IMAGE_TOKEN_INDEX).item()
             logits = out

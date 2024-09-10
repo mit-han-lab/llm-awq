@@ -172,41 +172,36 @@ def main(args):
             im_token_count = input_prompt.count(image_token_holder)
             if im_token_count == 0:
                 model_prompter.insert_prompt(image_token * image_num + input_prompt)
-                # model_prompter1.insert_prompt(image_token * image_num + input_prompt)
             else:
                 assert im_token_count == image_num
                 input_prompt = input_prompt.replace(image_token_holder, image_token)
                 model_prompter.insert_prompt(input_prompt)
-                # model_prompter1.insert_prompt(input_prompt)
         else:
             model_prompter.insert_prompt(input_prompt)
-            # model_prompter1.insert_prompt(input_prompt)
-            if args.promptcache:
-                image_tensor1=None#Can insert more images in future
+            if args.chunk_prefill:
+                image_tensor=None#Can insert more images in future
         output_stream = stream_generator(
             model,
             tokenizer,
-            model_prompter.model_input, #if count%3 else model_prompter1.model_input ,
-            start_pos, #if count%3 else 0,
+            model_prompter.model_input, 
+            start_pos, 
             gen_params,
             device=args.device,
             stop_token_ids=stop_token_ids,
             image_tensor=image_tensor,
-            promptcache=args.promptcache,
-            decodinglike_context=args.decodinglike_context
+            chunk_prefill=args.chunk_prefill,
         )
         print(output_indicator, end="", flush=True)
         if count == 0:
             outputs,total_tokens = stream_output(output_stream, time_stats)
         else:
             outputs,total_tokens = stream_output(output_stream)
-        if args.promptcache:
+        if args.chunk_prefill:
             start_pos+=total_tokens
         if (
             args.single_round is not True and args.max_seq_len > 512
         ):  # Only memorize previous conversations when kv_cache_size > 512
-            model_prompter.update_template(outputs,args.promptcache)
-            # model_prompter1.update_template(outputs)
+            model_prompter.update_template(outputs,args.chunk_prefill)
         count += 1
 
 
@@ -259,17 +254,9 @@ if __name__ == "__main__":
         help="whether to use flash attention",
     )
     parser.add_argument(
-        "--promptcache",
+        "--chunk_prefill",
         action="store_true",
-        help="Whether to use promptcache. If used, in context stage, the new input questions will not see former tokens, which will lead to speedup but forgetting",
-    )
-    parser.add_argument(
-        "--decodinglike_context",
-        action="store_true",
-        help="If used, in context stage, the history tokens will not be recalculated, greatly speeding up the calculation (only effective with --promptcache)",
+        help="If used, in context stage, the history tokens will not be recalculated, greatly speeding up the calculation",
     )
     args = parser.parse_args()
-    # args.flash_attn=True
-    # args.decodinglike_context=True
-    # args.promptcache=True
     main(args)

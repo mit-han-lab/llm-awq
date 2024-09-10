@@ -43,11 +43,10 @@ def StreamGenerator(
     stream_interval: int = 2,
     echo: bool = False,
     stop_token_ids=[],
-    promptcache=False,
-    decodinglike_context=False,
+    chunk_prefill=False,
 ):
-    if promptcache and start_pos!=0:
-        input_ids = tokenizer(input).input_ids[1:]#tokenizer will add a <s> at the beginning, so to delete it (important for promptcache)
+    if chunk_prefill and start_pos!=0:
+        input_ids = tokenizer(input).input_ids[1:]#tokenizer will add a <s> at the beginning, so to delete it (important for chunk_prefill)
     else:
         input_ids = tokenizer(input).input_ids
     print(input_ids)
@@ -94,7 +93,7 @@ def StreamGenerator(
                 logits = out.logits
                 past_key_values = out.past_key_values
         else:
-            out = model(inputs, start_pos=start_pos,decodinglike_context=decodinglike_context)
+            out = model(inputs, start_pos=start_pos,chunk_prefill=chunk_prefill)
             start_pos += inputs.shape[1]
             logits = out
         torch.cuda.synchronize()

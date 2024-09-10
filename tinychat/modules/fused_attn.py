@@ -228,7 +228,7 @@ class QuantLlamaAttentionFused(nn.Module):
         start_pos: int,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
-        decodinglike_context:bool,
+        chunk_prefill:bool,
     ):
         bsz, seqlen, _ = x.shape
         xqkv = self.qkv_proj(x)
@@ -263,7 +263,7 @@ class QuantLlamaAttentionFused(nn.Module):
 
             self.cache_v[:bsz, :, start_pos : start_pos + seqlen, :] = values_store
             self.cache_k[:bsz, :, :, start_pos : start_pos + seqlen, :] = keys_store
-            if decodinglike_context:
+            if chunk_prefill:
                 keys=self.cache_k[:, :, :,0 : start_pos, :]
                 keys=keys.permute(0,3,1,2,4).reshape(bsz, start_pos, self.num_key_value_heads, self.head_dim).contiguous()
                 keys=torch.cat((keys,xk),dim=1)
@@ -379,7 +379,7 @@ class QuantLlamaAttentionFused_flashattn_singlebatch(nn.Module):
         start_pos: int,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
-        decodinglike_context:bool,
+        chunk_prefill:bool,
     ):
         bsz, seqlen, _ = x.shape
         xqkv = self.qkv_proj(x)
@@ -411,7 +411,7 @@ class QuantLlamaAttentionFused_flashattn_singlebatch(nn.Module):
             self.cache_v[:bsz, :, start_pos : start_pos + seqlen, :] = values_store
             self.cache_k[:bsz, :, :, start_pos : start_pos + seqlen, :] = keys_store
 
-            if decodinglike_context:
+            if chunk_prefill:
                 keys=self.cache_k[:, :, :,0 : start_pos + seqlen, :]
                 keys=keys.permute(0,3,1,2,4).reshape(bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim).contiguous()
                 values=self.cache_v[:, :, 0 : start_pos + seqlen, :]
