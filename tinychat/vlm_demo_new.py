@@ -155,7 +155,6 @@ def main(args):
     model.eval()
     time_stats = TimeStats()
     start_pos=0
-    image_tensor1=image_tensor
     while True:
         # Get input from the user
         print("=" * 50)
@@ -184,8 +183,6 @@ def main(args):
             # model_prompter1.insert_prompt(input_prompt)
             if args.promptcache:
                 image_tensor1=None#Can insert more images in future
-                if count%3==0:
-                    image_tensor1=image_tensor
         output_stream = stream_generator(
             model,
             tokenizer,
@@ -194,7 +191,7 @@ def main(args):
             gen_params,
             device=args.device,
             stop_token_ids=stop_token_ids,
-            image_tensor=image_tensor1,
+            image_tensor=image_tensor,
             promptcache=args.promptcache,
             decodinglike_context=args.decodinglike_context
         )
