@@ -238,12 +238,17 @@ if __name__ == "__main__":
     stop_token_ids = get_stop_token_ids(args.model_type, args.model_path)
     count = 0
     start_pos=0
+    # model.model.layers=model.model.layers[::-1]
+    # prompts=['My name is Tom Black!','Tell me a story!','Tell me a joke!','How do you compare MIT and Harvard?',"What's my name?"]
+    # input()
+    # for input_prompt in prompts:
     while True:
-        # Get input from the user
+        #Get input from the user
         input_prompt = input("USER: ")
         if input_prompt == "":
             print("EXIT...")
             break
+        # print('USER: '+input_prompt)
         model_prompter.insert_prompt(input_prompt)
         output_stream = stream_generator(
             model,
