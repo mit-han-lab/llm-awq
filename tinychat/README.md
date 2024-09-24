@@ -143,15 +143,13 @@ We recently evaluated AWQ's performance on the Visual Language Models. Here is a
 
 ## New Optimization of Context Stage
 We have optimized the speed of the context stage and updated our code with several enhancements, including the adoption of FlashAttention and the elimination of redundant computations. The key optimizations include:
-1. Adopting the FlashAttention kernel. (currently supports only single-batch operations to achieve better results)
+1. Adopting the FlashAttention kernel. (Currently we only support single-batch operations to achieve better results)
 2. Computing only the last tokens in the final logits layer. (This method is used by default.)
 3. Utilizing history KV caches in the context stage to speed up. (chunk prefilling)
 
 These optimizations are orthogonal, allowing for their combined use to achieve significant speedups. Under specific conditions, these enhancements can lead to up to an 8x increase in Time To First Token (TTFT) compared to the previous version of TinyChat. We conducted experiments using the Orin and 4090 GPUs, and detailed results are provided below. 
 
-![](./figures/TTFT_Speedup_flash_only_last_logits.png)
-![](./figures/TTFT_Speedup_constant_input.png)
-![](./figures/TTFT_Speedup_constant_history.png)
+
 
 ## Usage
 
@@ -226,7 +224,7 @@ python demo.py --model_type llama \
     --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
     --precision W16A16
 ```
-You can now try using FlashAttention along with chunk prefilling. Use the following two arguments when running demo: ```bash
+You can now try using FlashAttention along with chunk prefilling. Use the following two arguments when running demo: ```
 --flash --chunk_prefilling```. 
 
 The above command works well for most cloud and desktop GPUs, since their CPU and GPU memory space are separated. However, for edge GPUs with shared host and device memory, in order to run larger models (e.g. LLaMA-2-70B on 64GB Orin), it is necessary to break down the pretrained checkpoints into small pieces:
@@ -260,11 +258,15 @@ python benchmark.py --model_type llama \
 ```
 We also have a file for benchmarking the context stage of our new methods. You can benchmark the context stage of TinyChat with FlashAttention: 
 ``` bash
-python benchmark_context.py --context_length 16 32 64 128 256 512 1024 2048 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --flash
+python benchmark_context.py --flash \
+--context_length 16 32 64 128 256 512 1024 2048 \
+--model_path /PATH/TO/LLAMA2/llama-2-7b-chat 
 ```
 To benchmark chunk prefilling, use:
 ```bash
-python benchmark_context.py --context_length 16 32 64 128 256 512 1024 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --question_length 32 --chunk_prefilling
+python benchmark_context.py --chunk_prefilling \
+--model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
+--question_length 32 --context_length 16 32 64 128 256 512 1024 
 ```
 Note: The kv caches in the current implementation are pre-allocated. So if you run out of memory, it might be the case that the kv cache is too large. To solve the problem, you may pass in `--max_seq_len [a smaller number]`.
 ### Support Visual Language Models (VILA-1.5, VILA, LLaVA)
