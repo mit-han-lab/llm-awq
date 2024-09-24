@@ -143,11 +143,11 @@ We recently evaluated AWQ's performance on the Visual Language Models. Here is a
 
 ## New Optimization of Context Stage
 We have optimized the speed of the context stage and updated our code with several enhancements, including the adoption of flash attention and the elimination of redundant computations. The key optimizations include:
-1. Adopting the flash-attention kernel (currently supports only single-batch operations).
-2. Computing only the last tokens in the final logits layer.
-3. Utilizing history KV caches in the context stage to speed up. (chunk prefill)
+1. Adopting the flash-attention kernel. (currently supports only single-batch operations to achieve better results)
+2. Computing only the last tokens in the final logits layer. (This method is used by default.)
+3. Utilizing history KV caches in the context stage to speed up. (chunk prefilling)
 
-Under certain conditions, these improvements can result in up to an 8x speedup in TTFT(Time To the First Token) with minor accuracy loss comparing with the old version of TinyChat. We conducted experiments on the Orin GPU, and the detailed results are provided below. 
+These optimizations are orthogonal, allowing for their combined use to achieve significant speedups. Under specific conditions, these enhancements can lead to up to an 8x increase in Time To First Token (TTFT) compared to the previous version of TinyChat. We conducted experiments using the Orin and 4090 GPUs, and detailed results are provided below. 
 
 ![](./figures/TTFT_Speedup_flash_only_last_logits.png)
 ![](./figures/TTFT_Speedup_constant_input.png)
@@ -155,14 +155,14 @@ Under certain conditions, these improvements can result in up to an 8x speedup i
 
 ## Usage
 
-1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies. If you want to use flash-attention, start by installing it with: ```pip install flash-attn --no-build-isolation```. However, for Orin GPUs, there is no pre-built version available. You will need to build it from source. Follow these commands:
+1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies. If you want to use flash-attention, start by installing it with: ```pip install flash-attn --no-build-isolation```. However, for some GPUs such as Jetson Orin, there is no pre-built version available. You will need to build it from source. Follow these commands:
 ```bash
 git clone https://github.com/Dao-AILab/flash-attention.git
 cd flash-attention
 sed -i '168 a\    cc_flag.append("-gencode")\n\    cc_flag.append("arch=compute_87,code=sm_87")' setup.py
 python setup.py install
 ``` 
-This process may take some time as it involves compiling the code.
+This process may take some time as it involves compiling the code. Additionally, please note that these commands are just for Jetson Orin GPUs, whose CUDA compute capability is 87. For other GPUs, you may use ```nvidia-smi --query-gpu=compute_cap --format=csv``` to get the compute capability and merely change 87 to that. 
 
 2. Download the pretrained instruction-tuned LLMs:
    
@@ -226,8 +226,8 @@ python demo.py --model_type llama \
     --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
     --precision W16A16
 ```
-You can also try using flash-attention along with chunk prefill. Use the following three arguments when running demo: ```bash
---flash --chunk_prefill```. 
+You can now try using FlashAttention along with chunk prefilling. Use the following two arguments when running demo: ```bash
+--flash --chunk_prefilling```. 
 
 The above command works well for most cloud and desktop GPUs, since their CPU and GPU memory space are separated. However, for edge GPUs with shared host and device memory, in order to run larger models (e.g. LLaMA-2-70B on 64GB Orin), it is necessary to break down the pretrained checkpoints into small pieces:
 
@@ -258,13 +258,13 @@ python benchmark.py --model_type llama \
     --model_path /PATH/TO/LLAMA2/llama-2-7b-chat    \
     --q_group_size 128
 ```
-We also have a file for benchmarking the context stage of our new methods. You can benchmark TinyChat with flash-attention using: 
+We also have a file for benchmarking the context stage of our new methods. You can benchmark the context stage of TinyChat with flash-attention: 
 ``` bash
 python benchmark_context.py --context_length 16 32 64 128 256 512 1024 2048 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --flash
 ```
-To benchmark chunk prefill, use:
+To benchmark chunk prefilling, use:
 ```bash
-python benchmark_context.py --context_length 16 32 64 128 256 512 1024 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --question_length 32 --chunk_prefill
+python benchmark_context.py --context_length 16 32 64 128 256 512 1024 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --question_length 32 --chunk_prefilling
 ```
 Note: The kv caches in the current implementation are pre-allocated. So if you run out of memory, it might be the case that the kv cache is too large. To solve the problem, you may pass in `--max_seq_len [a smaller number]`.
 ### Support Visual Language Models (VILA-1.5, VILA, LLaVA)
@@ -308,7 +308,7 @@ python vlm_demo_new.py \
     --vis-image #Optional
 ```
 
-to run the terminal demo directly. You can also use``` --flash --chunk_prefill``` to accelerate.
+to run the terminal demo directly. You can also use``` --flash --chunk_prefilling``` to accelerate.
 
 Note: if you enable `--vis-image` mode, TinyChat will print input images directly in your terminal. You may need to install [termvisage](https://github.com/AnonymouX47/termvisage) to enable this mode. A [terminal emulator](https://github.com/AnonymouX47/termvisage?tab=readme-ov-file#requirements) is also required.
 
