@@ -124,11 +124,11 @@ class ModelWorker:
         torch.nn.init.normal_ = skip
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
-        tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN_IDX = self.tokenizer.convert_tokens_to_ids(
-            [tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN]
-        )[
-            0
-        ]
+        tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN_IDX = (
+            self.tokenizer.convert_tokens_to_ids(
+                [tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN]
+            )[0]
+        )
         config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
         config.min_max_range_path = args.model_path + "/emb_min_max.pt"
         model = LlavaLlamaForCausalLM(config, args.device).half()

@@ -47,6 +47,7 @@ from tinychat.utils.log_utils import (
 )
 from tinychat.stream_generators.llava_stream_gen import tokenizer_image_token
 from tinychat.utils.llava_image_processing import process_images, load_image_from_base64
+
 # from tinychat.models.llava_llama import LlavaLlamaForCausalLM
 from tinychat.models.vila_llama import VilaLlamaForCausalLM
 from tinychat.stream_generators.llava_stream_gen import LlavaStreamGenerator
@@ -125,12 +126,14 @@ class ModelWorker:
         torch.nn.init.uniform_ = skip
         torch.nn.init.normal_ = skip
 
-        self.tokenizer = AutoTokenizer.from_pretrained(os.path.join(args.model_path, "llm"), use_fast=False)
-        tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN_IDX = self.tokenizer.convert_tokens_to_ids(
-            [tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN]
-        )[
-            0
-        ]
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            os.path.join(args.model_path, "llm"), use_fast=False
+        )
+        tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN_IDX = (
+            self.tokenizer.convert_tokens_to_ids(
+                [tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN]
+            )[0]
+        )
         config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
         model = VilaLlamaForCausalLM(config).half()
         tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN_IDX = (

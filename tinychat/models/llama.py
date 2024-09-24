@@ -35,7 +35,9 @@ class RMSNorm(torch.nn.Module):
         return output
 
 
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, scale: float = 1.0):
+def precompute_freqs_cis(
+    dim: int, end: int, theta: float = 10000.0, scale: float = 1.0
+):
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     t = torch.arange(end, device=freqs.device)  # type: ignore
     freqs = torch.outer(t * scale, freqs).float()  # type: ignore
@@ -153,7 +155,7 @@ class LlamaAttentionFused(nn.Module):
         start_pos: int,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
-        chunk_prefill:bool,
+        chunk_prefilling: bool,
     ):
         bsz, seqlen, _ = x.shape
         # xqkv = self.qkv_proj(x)
@@ -184,11 +186,23 @@ class LlamaAttentionFused(nn.Module):
             self.cache_v[:bsz, :, start_pos : start_pos + seqlen, :] = values_store
             self.cache_k[:bsz, :, :, start_pos : start_pos + seqlen, :] = keys_store
 
-            if chunk_prefill:
-                keys=self.cache_k[:, :, :,0 : start_pos + seqlen, :]
-                keys=keys.permute(0,3,1,2,4).reshape(bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim).contiguous()
-                values=self.cache_v[:, :, 0 : start_pos + seqlen, :]
-                values=values.transpose(2, 1).reshape(bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim).contiguous()
+            if chunk_prefilling:
+                keys = self.cache_k[:, :, :, 0 : start_pos + seqlen, :]
+                keys = (
+                    keys.permute(0, 3, 1, 2, 4)
+                    .reshape(
+                        bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim
+                    )
+                    .contiguous()
+                )
+                values = self.cache_v[:, :, 0 : start_pos + seqlen, :]
+                values = (
+                    values.transpose(2, 1)
+                    .reshape(
+                        bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim
+                    )
+                    .contiguous()
+                )
             else:
                 keys = xk
                 values = xv
@@ -265,10 +279,10 @@ class TransformerBlock(nn.Module):
         start_pos: int,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
-        chunk_prefill:bool,
+        chunk_prefilling: bool,
     ):
         h = x + self.self_attn.forward(
-            self.input_layernorm(x), start_pos, freqs_cis, mask,chunk_prefill
+            self.input_layernorm(x), start_pos, freqs_cis, mask, chunk_prefilling
         )
         out = h + self.mlp.forward(self.post_attention_layernorm(h))
         return out
@@ -299,12 +313,16 @@ class Transformer(nn.Module):
             self.params.hidden_size // self.params.num_attention_heads,
             self.params.max_position_embeddings * 2,
             self.params.rope_theta,
-            rope_scale
+            rope_scale,
         )
 
     @torch.inference_mode()
     def forward(
-        self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor = None,chunk_prefill: bool=False
+        self,
+        tokens: torch.Tensor,
+        start_pos: int,
+        inputs_embeds: torch.Tensor = None,
+        chunk_prefilling: bool = False,
     ):
         if tokens is not None:
             _bsz, seqlen = tokens.shape
@@ -319,12 +337,14 @@ class Transformer(nn.Module):
         if seqlen > 1:
             mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=h.device)
             mask = torch.triu(mask, diagonal=1).type_as(h)
-            if chunk_prefill:
-                mask_history=torch.zeros((1, 1, seqlen, start_pos), dtype=torch.float16, device=h.device).type_as(h)
-                mask=torch.cat((mask_history,mask),dim=-1)                
+            if chunk_prefilling:
+                mask_history = torch.zeros(
+                    (1, 1, seqlen, start_pos), dtype=torch.float16, device=h.device
+                ).type_as(h)
+                mask = torch.cat((mask_history, mask), dim=-1)
         for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, mask, chunk_prefill)
-        h=h[:,-1:,:]#Only the last token is useful
+            h = layer(h, start_pos, freqs_cis, mask, chunk_prefilling)
+        h = h[:, -1:, :]  # Only the last token is useful
         h = self.norm(h)
         return h
 
@@ -338,8 +358,12 @@ class LlamaForCausalLM(nn.Module):
 
     @torch.inference_mode()
     def forward(
-        self, tokens: torch.Tensor, start_pos: int, inputs_embeds: torch.Tensor = None,chunk_prefill = False
+        self,
+        tokens: torch.Tensor,
+        start_pos: int,
+        inputs_embeds: torch.Tensor = None,
+        chunk_prefilling=False,
     ):
-        h = self.model(tokens, start_pos, inputs_embeds,chunk_prefill)
+        h = self.model(tokens, start_pos, inputs_embeds, chunk_prefilling)
         output = self.lm_head(h)  # only compute last logits
         return output.float()

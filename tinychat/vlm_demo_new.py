@@ -23,6 +23,7 @@ from tinychat.utils.llava_image_processing import (
     vis_images,
 )
 import tinychat.utils.constants
+
 # from tinychat.models.llava_llama import LlavaLlamaForCausalLM
 from tinychat.models.vila_llama import VilaLlamaForCausalLM
 from tinychat.stream_generators.llava_stream_gen import LlavaStreamGenerator
@@ -51,7 +52,9 @@ def main(args):
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
 
-    tokenizer = AutoTokenizer.from_pretrained(os.path.join(args.model_path, "llm"), use_fast=False)
+    tokenizer = AutoTokenizer.from_pretrained(
+        os.path.join(args.model_path, "llm"), use_fast=False
+    )
     tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN_IDX = (
         tokenizer.convert_tokens_to_ids(
             [tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN]
@@ -90,6 +93,7 @@ def main(args):
 
     elif args.precision == "W4A16":
         from tinychat.utils.load_quant import load_awq_model
+
         model.llm = load_awq_model(model.llm, args.quant_path, 4, 128, args.device)
         from tinychat.modules import (
             make_quant_norm,
@@ -97,9 +101,10 @@ def main(args):
             make_fused_mlp,
             make_fused_vision_attn,
         )
+
         if args.flash_attn:
             print("Enabling flash-attention!")
-            make_quant_attn(model.llm, args.device,1)
+            make_quant_attn(model.llm, args.device, 1)
         else:
             print("Disabling flash-attention!")
             make_quant_attn(model.llm, args.device)
@@ -139,9 +144,6 @@ def main(args):
     model_prompter = get_prompter(
         args.model_type, args.model_path, short_prompt, args.empty_prompt
     )
-    # model_prompter1 = get_prompter(
-    #     args.model_type, args.model_path, short_prompt, args.empty_prompt
-    # )
     stop_token_ids = get_stop_token_ids(args.model_type, args.model_path)
     count = 0
 
@@ -154,7 +156,7 @@ def main(args):
 
     model.eval()
     time_stats = TimeStats()
-    start_pos=0
+    start_pos = 0
     while True:
         # Get input from the user
         print("=" * 50)
@@ -165,10 +167,10 @@ def main(args):
             time_stats.show()
             break
         if count == 0:  # Insert image here
-            image_token = get_image_token(model, args.model_path)#'<image>\\n '
+            image_token = get_image_token(model, args.model_path)
             image_token_holder = (
                 tinychat.utils.constants.LLAVA_DEFAULT_IM_TOKEN_PLACE_HOLDER
-            )#'<image>'
+            ) 
             im_token_count = input_prompt.count(image_token_holder)
             if im_token_count == 0:
                 model_prompter.insert_prompt(image_token * image_num + input_prompt)
@@ -178,30 +180,30 @@ def main(args):
                 model_prompter.insert_prompt(input_prompt)
         else:
             model_prompter.insert_prompt(input_prompt)
-            if args.chunk_prefill:
-                image_tensor=None#Can insert more images in future
+            if args.chunk_prefilling:
+                image_tensor = None  # Can insert more images in future
         output_stream = stream_generator(
             model,
             tokenizer,
-            model_prompter.model_input, 
-            start_pos, 
+            model_prompter.model_input,
+            start_pos,
             gen_params,
             device=args.device,
             stop_token_ids=stop_token_ids,
             image_tensor=image_tensor,
-            chunk_prefill=args.chunk_prefill,
+            chunk_prefilling=args.chunk_prefilling,
         )
         print(output_indicator, end="", flush=True)
         if count == 0:
-            outputs,total_tokens = stream_output(output_stream, time_stats)
+            outputs, total_tokens = stream_output(output_stream, time_stats)
         else:
-            outputs,total_tokens = stream_output(output_stream)
-        if args.chunk_prefill:
-            start_pos+=total_tokens
+            outputs, total_tokens = stream_output(output_stream)
+        if args.chunk_prefilling:
+            start_pos += total_tokens
         if (
             args.single_round is not True and args.max_seq_len > 512
         ):  # Only memorize previous conversations when kv_cache_size > 512
-            model_prompter.update_template(outputs,args.chunk_prefill)
+            model_prompter.update_template(outputs, args.chunk_prefilling)
         count += 1
 
 
@@ -211,12 +213,12 @@ if __name__ == "__main__":
         "--model_type", type=str, default="LLaMa", help="type of the model"
     )
     parser.add_argument(
-        "--model-path", type=str, default="/home/yuming/workspace/llm-awq_1/tinychat/VILA1.5-13b-AWQ"
+        "--model-path", type=str, default="/data/llm/checkpoints/llava/llava-v1.5-7b"
     )
     parser.add_argument(
         "--quant-path",
         type=str,
-        default="/home/yuming/workspace/llm-awq_1/tinychat/VILA1.5-13b-AWQ/llm/vila-1.5-13b-w4-g128-awq-v2.pt",
+        default="/data/llm/checkpoints/llava/llava-v1.5-7b-w4-g128-awq.pt",
     )
     parser.add_argument(
         "--precision", type=str, default="W4A16", help="compute precision"
@@ -224,7 +226,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--image-file",
         type=str,
-        default="/home/yuming/workspace/VILA/demo_images/av.png",
+        default="https://llava.hliu.cc/file=/nobackup/haotian/code/LLaVA/llava/serve/examples/extreme_ironing.jpg",
     )
     parser.add_argument(
         "--im-sep",
@@ -254,7 +256,7 @@ if __name__ == "__main__":
         help="whether to use flash attention",
     )
     parser.add_argument(
-        "--chunk_prefill",
+        "--chunk_prefilling",
         action="store_true",
         help="If used, in context stage, the history tokens will not be recalculated, greatly speeding up the calculation",
     )

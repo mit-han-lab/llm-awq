@@ -109,5 +109,5 @@ def process_images(images, image_processor, model_cfg):
         return ret
     if all(x.shape == new_images[0].shape for x in new_images):
         new_images = torch.stack(new_images, dim=0)
-    
+
     return new_images

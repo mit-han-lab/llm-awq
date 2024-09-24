@@ -21,26 +21,34 @@ class VilaLlamaForCausalLM(LlavaMetaModel, LlavaMetaForCausalLM, PreTrainedModel
     def __init__(self, config):
         super().__init__(config)
         self.init_vlm(config)
-    
-    def init_vlm(self, config = None, *args, **kwargs):
-        if hasattr(self, "llm") or hasattr(self, "vision_tower")  or hasattr(self, "mm_projector"):
+
+    def init_vlm(self, config=None, *args, **kwargs):
+        if (
+            hasattr(self, "llm")
+            or hasattr(self, "vision_tower")
+            or hasattr(self, "mm_projector")
+        ):
             # already initialized, skipped
-            return 
-        
+            return
+
         model_dtype = getattr(config, "model_dtype", "torch.float16")
         if not hasattr(config, "model_dtype"):
-            warnings.warn("model_dtype not found in config, defaulting to torch.float16.")
+            warnings.warn(
+                "model_dtype not found in config, defaulting to torch.float16."
+            )
             config.model_dtype = model_dtype
-        
+
         # print("init_vlm(): config", config); input("DEBUG init_vlm")
         cfgs = get_model_config(config)
         if len(cfgs) == 3:
             llm_cfg, vision_tower_cfg, mm_projector_cfg = cfgs
         else:
-            raise ValueError("`llm_cfg` `mm_projector_cfg` `vision_tower_cfg` not found in the config.")
+            raise ValueError(
+                "`llm_cfg` `mm_projector_cfg` `vision_tower_cfg` not found in the config."
+            )
         # print("init_vlm():", cfgs); input("DEBUG init_vlm")
         llm_cfg = AutoConfig.from_pretrained(llm_cfg)
-        
+
         # self.llm, self.tokenizer = build_llm_and_tokenizer(llm_cfg, config, *args, **kwargs)
         self.llm = LlamaForCausalLM(llm_cfg)
         self.vision_tower = build_vision_tower(vision_tower_cfg, config)
@@ -50,9 +58,11 @@ class VilaLlamaForCausalLM(LlavaMetaModel, LlavaMetaForCausalLM, PreTrainedModel
         self.is_loaded = True
 
         assert (
-            self.llm is not None or self.vision_tower is not None or self.mm_projector is not None
+            self.llm is not None
+            or self.vision_tower is not None
+            or self.mm_projector is not None
         ), "At least one of the components must be instantiated."
-    
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -68,7 +78,7 @@ class VilaLlamaForCausalLM(LlavaMetaModel, LlavaMetaForCausalLM, PreTrainedModel
         images: Optional[torch.FloatTensor] = None,
         return_dict: Optional[bool] = None,
         special_token: bool = False,
-        chunk_prefill:bool=False,
+        chunk_prefilling: bool = False,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         self.freezed_module_patch()
         if inputs_embeds is None:
@@ -87,12 +97,13 @@ class VilaLlamaForCausalLM(LlavaMetaModel, LlavaMetaForCausalLM, PreTrainedModel
                 tokens=None,
                 start_pos=start_pos,
                 inputs_embeds=inputs_embeds,
-                chunk_prefill=chunk_prefill,
+                chunk_prefilling=chunk_prefilling,
             )
-        else:#tokens
+        else:  # tokens
             outputs = self.llm.forward(
                 tokens=input_ids,
                 start_pos=start_pos,
                 inputs_embeds=None,
+                chunk_prefilling=chunk_prefilling,
             )
         return outputs

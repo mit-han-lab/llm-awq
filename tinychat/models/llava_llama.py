@@ -59,9 +59,11 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         ):
             from tinychat.utils.constants import LLAVA_DEFAULT_IMAGE_PATCH_TOKEN_IDX
 
-            with nullcontext() if getattr(
-                self.config, "tune_vision_encoder", False
-            ) else torch.no_grad():
+            with (
+                nullcontext()
+                if getattr(self.config, "tune_vision_encoder", False)
+                else torch.no_grad()
+            ):
                 if type(images) is list:
                     images = [
                         image.unsqueeze(0) if len(image.shape) == 3 else image

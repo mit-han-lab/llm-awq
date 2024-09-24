@@ -53,7 +53,8 @@ class BasePrompter:
             self.template = (
                 self.starter
                 + self.role1
-                + self.colon + " {prompt}"
+                + self.colon
+                + " {prompt}"
                 + self.stopper
                 + self.sen_spliter
                 + self.starter
@@ -68,7 +69,8 @@ class BasePrompter:
                 + self.sen_spliter
                 + self.starter
                 + self.role1
-                + self.colon + " {prompt}"
+                + self.colon
+                + " {prompt}"
                 + self.stopper
                 + self.sen_spliter
                 + self.starter
@@ -80,13 +82,13 @@ class BasePrompter:
     def insert_prompt(self, input_prompt):
         self.model_input = self.template.format(prompt=input_prompt)
 
-    def update_template(self, outputs,promptcache=0):
-        if promptcache:
+    def update_template(self, outputs, chunk_prefilling=0):
+        if chunk_prefilling:
             self.template = (
                 self.role1
                 + ": {prompt}"
                 + self.stopper
-                + self.sen_spliter#blank space
+                + self.sen_spliter  # blank space
                 + self.starter
                 + self.role2
                 + ":"
@@ -193,6 +195,7 @@ class Llama3Prompter(BasePrompter):
     <|start_header_id|>assistant<|end_header_id|>
 
     """
+
     def __init__(self):
         system_inst = ""
         role1 = "<|start_header_id|>user<|end_header_id|>\n\n"
@@ -200,7 +203,9 @@ class Llama3Prompter(BasePrompter):
         sen_spliter = "<|eot_id|>"
         qa_spliter = ""
         colon = ""
-        super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon)
+        super().__init__(
+            system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon
+        )
 
 
 class LlavaLlamaPrompter(BasePrompter):
@@ -223,16 +228,22 @@ class LlavaLlama3Prompter(BasePrompter):
     <|start_header_id|>assistant<|end_header_id|>
 
     """
+
     def __init__(self):
-        system_inst = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are a helpful language and vision assistant. " + \
-            "You are able to understand the visual content that the user provides, " + \
-            "and assist the user with a variety of tasks using natural language."
+        system_inst = (
+            "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are a helpful language and vision assistant. "
+            + "You are able to understand the visual content that the user provides, "
+            + "and assist the user with a variety of tasks using natural language."
+        )
         role1 = "<|start_header_id|>user<|end_header_id|>\n\n"
         role2 = "<|start_header_id|>assistant<|end_header_id|>\n\n"
         sen_spliter = "<|end_of_text|>"
         qa_spliter = ""
         colon = ""
-        super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon)
+        super().__init__(
+            system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon
+        )
+
 
 class FalconSimplePrompter(BasePrompter):
     def __init__(self):
@@ -294,7 +305,9 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
     if model_type.lower() == "llama":
         if "vicuna" in model_path.lower():
             return VicunaPrompter()
-        elif ("llama-3" in model_path.lower() or "llama3" in model_path.lower()) and "30b" not in model_path.lower():
+        elif (
+            "llama-3" in model_path.lower() or "llama3" in model_path.lower()
+        ) and "30b" not in model_path.lower():
             if "vila" in model_path.lower():
                 # with system prompt by default
                 return LlavaLlama3Prompter()
@@ -318,7 +331,9 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
 
 def get_stop_token_ids(model_type, model_path=""):
     if model_type.lower() == "llama":
-        if ("llama-3" in model_path.lower() or "llama3" in model_path.lower()) and "30b" not in model_path.lower():
+        if (
+            "llama-3" in model_path.lower() or "llama3" in model_path.lower()
+        ) and "30b" not in model_path.lower():
             # llama3
             return [128001, 128009]
         return []

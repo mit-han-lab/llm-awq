@@ -18,7 +18,9 @@ def tune_llava_patch_embedding(vision_tower, device):
     # Without this pre-tuning, the embedding layer can cause significant slowdown due to cuDNN tuning.
     device = vision_tower.device
     if "intern" not in vision_tower.__class__.__name__.lower():
-        patch_embedding = vision_tower.vision_tower.vision_model.embeddings.patch_embedding
+        patch_embedding = (
+            vision_tower.vision_tower.vision_model.embeddings.patch_embedding
+        )
     else:
         patch_embedding = vision_tower.vision_tower.embeddings.patch_embedding
     patch_embedding = patch_embedding.to(device)

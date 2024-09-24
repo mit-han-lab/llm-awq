@@ -228,7 +228,7 @@ class QuantLlamaAttentionFused(nn.Module):
         start_pos: int,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
-        chunk_prefill:bool,
+        chunk_prefilling: bool,
     ):
         bsz, seqlen, _ = x.shape
         xqkv = self.qkv_proj(x)
@@ -263,13 +263,21 @@ class QuantLlamaAttentionFused(nn.Module):
 
             self.cache_v[:bsz, :, start_pos : start_pos + seqlen, :] = values_store
             self.cache_k[:bsz, :, :, start_pos : start_pos + seqlen, :] = keys_store
-            if chunk_prefill:
-                keys=self.cache_k[:, :, :,0 : start_pos, :]
-                keys=keys.permute(0,3,1,2,4).reshape(bsz, start_pos, self.num_key_value_heads, self.head_dim).contiguous()
-                keys=torch.cat((keys,xk),dim=1)
-                values=self.cache_v[:, :, 0 : start_pos, :]
-                values=values.transpose(2, 1).reshape(bsz, start_pos, self.num_key_value_heads, self.head_dim).contiguous()
-                values=torch.cat((values,xv),dim=1)
+            if chunk_prefilling:
+                keys = self.cache_k[:, :, :, 0:start_pos, :]
+                keys = (
+                    keys.permute(0, 3, 1, 2, 4)
+                    .reshape(bsz, start_pos, self.num_key_value_heads, self.head_dim)
+                    .contiguous()
+                )
+                keys = torch.cat((keys, xk), dim=1)
+                values = self.cache_v[:, :, 0:start_pos, :]
+                values = (
+                    values.transpose(2, 1)
+                    .reshape(bsz, start_pos, self.num_key_value_heads, self.head_dim)
+                    .contiguous()
+                )
+                values = torch.cat((values, xv), dim=1)
             else:
                 keys = xk
                 values = xv
@@ -280,7 +288,7 @@ class QuantLlamaAttentionFused(nn.Module):
             values = torch.repeat_interleave(
                 values, dim=2, repeats=self.num_key_value_groups
             )
-            
+
             xq = xq.transpose(1, 2)
             keys = keys.transpose(1, 2)
             values = values.transpose(1, 2)
@@ -312,10 +320,13 @@ class QuantLlamaAttentionFused(nn.Module):
             output = output.reshape(bsz, 1, -1)
 
         return self.o_proj(output)
-    
-class QuantLlamaAttentionFused_flashattn_singlebatch(nn.Module):
+
+
+class QuantLlamaAttentionFusedFlash(nn.Module):
     """Flash_attn_func from 'Flash{A}ttention-2: Faster Attention with Better Parallelism and Work Partitioning' paper"""
+
     """This function is faster than the varlen one but only supports single-batch inference"""
+
     def __init__(self, hidden_size, num_heads, qkv_layer, o_proj, dev, args):
         super().__init__()
 
@@ -379,7 +390,7 @@ class QuantLlamaAttentionFused_flashattn_singlebatch(nn.Module):
         start_pos: int,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
-        chunk_prefill:bool,
+        chunk_prefilling: bool,
     ):
         bsz, seqlen, _ = x.shape
         xqkv = self.qkv_proj(x)
@@ -411,11 +422,23 @@ class QuantLlamaAttentionFused_flashattn_singlebatch(nn.Module):
             self.cache_v[:bsz, :, start_pos : start_pos + seqlen, :] = values_store
             self.cache_k[:bsz, :, :, start_pos : start_pos + seqlen, :] = keys_store
 
-            if chunk_prefill:
-                keys=self.cache_k[:, :, :,0 : start_pos + seqlen, :]
-                keys=keys.permute(0,3,1,2,4).reshape(bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim).contiguous()
-                values=self.cache_v[:, :, 0 : start_pos + seqlen, :]
-                values=values.transpose(2, 1).reshape(bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim).contiguous()
+            if chunk_prefilling:
+                keys = self.cache_k[:, :, :, 0 : start_pos + seqlen, :]
+                keys = (
+                    keys.permute(0, 3, 1, 2, 4)
+                    .reshape(
+                        bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim
+                    )
+                    .contiguous()
+                )
+                values = self.cache_v[:, :, 0 : start_pos + seqlen, :]
+                values = (
+                    values.transpose(2, 1)
+                    .reshape(
+                        bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim
+                    )
+                    .contiguous()
+                )
             else:
                 keys = xk
                 values = xv
@@ -426,7 +449,7 @@ class QuantLlamaAttentionFused_flashattn_singlebatch(nn.Module):
             values = torch.repeat_interleave(
                 values, dim=2, repeats=self.num_key_value_groups
             )
-            output=flash_attn_func(
+            output = flash_attn_func(
                 q=xq,
                 k=keys,
                 v=values,
@@ -457,8 +480,7 @@ class QuantLlamaAttentionFused_flashattn_singlebatch(nn.Module):
         return self.o_proj(output)
 
 
-
-def make_quant_attn(model, dev,flash_attn=0):
+def make_quant_attn(model, dev, flash_attn=0):
     """
     Replace all LlamaAttention modules with QuantLlamaAttention modules, fusing the q, k, v projections.
     """
@@ -507,7 +529,7 @@ def make_quant_attn(model, dev,flash_attn=0):
             )
         else:
             if flash_attn:
-                attn = QuantLlamaAttentionFused_flashattn_singlebatch(
+                attn = QuantLlamaAttentionFusedFlash(
                     m.args.hidden_size,
                     m.args.num_attention_heads,
                     qkv_layer,
@@ -524,7 +546,7 @@ def make_quant_attn(model, dev,flash_attn=0):
                     dev,
                     m.args,
                 )
-        
+
         if "." in name:
             parent_name = name.rsplit(".", 1)[0]
             child_name = name[len(parent_name) + 1 :]
