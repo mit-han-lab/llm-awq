@@ -142,8 +142,8 @@ We recently evaluated AWQ's performance on the Visual Language Models. Here is a
 | AWQ-INT4   | 84.1  | 64.4 | 61.3   | 86.7  | 73.2  | 88.2 | 1714.79 | 83.2 | 79.6   | 68.9 | 
 
 ## New Optimization of Context Stage
-We have optimized the speed of the context stage and updated our code with several enhancements, including the adoption of flash attention and the elimination of redundant computations. The key optimizations include:
-1. Adopting the flash-attention kernel. (currently supports only single-batch operations to achieve better results)
+We have optimized the speed of the context stage and updated our code with several enhancements, including the adoption of FlashAttention and the elimination of redundant computations. The key optimizations include:
+1. Adopting the FlashAttention kernel. (currently supports only single-batch operations to achieve better results)
 2. Computing only the last tokens in the final logits layer. (This method is used by default.)
 3. Utilizing history KV caches in the context stage to speed up. (chunk prefilling)
 
@@ -155,7 +155,7 @@ These optimizations are orthogonal, allowing for their combined use to achieve s
 
 ## Usage
 
-1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies. If you want to use flash-attention, start by installing it with: ```pip install flash-attn --no-build-isolation```. However, for some GPUs such as Jetson Orin, there is no pre-built version available. You will need to build it from source. Follow these commands:
+1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies. If you want to use FlashAttention, start by installing it with: ```pip install flash-attn --no-build-isolation```. However, for some GPUs such as Jetson Orin, there is no pre-built version available. You will need to build it from source. Follow these commands:
 ```bash
 git clone https://github.com/Dao-AILab/flash-attention.git
 cd flash-attention
@@ -258,7 +258,7 @@ python benchmark.py --model_type llama \
     --model_path /PATH/TO/LLAMA2/llama-2-7b-chat    \
     --q_group_size 128
 ```
-We also have a file for benchmarking the context stage of our new methods. You can benchmark the context stage of TinyChat with flash-attention: 
+We also have a file for benchmarking the context stage of our new methods. You can benchmark the context stage of TinyChat with FlashAttention: 
 ``` bash
 python benchmark_context.py --context_length 16 32 64 128 256 512 1024 2048 --model_path /PATH/TO/LLAMA2/llama-2-7b-chat --flash
 ```
