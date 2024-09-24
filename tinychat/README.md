@@ -259,14 +259,14 @@ python benchmark.py --model_type llama \
 We also have a file for benchmarking the context stage of our new methods. You can benchmark the context stage of TinyChat with FlashAttention: 
 ``` bash
 python benchmark_context.py --flash \
---context_length 16 32 64 128 256 512 1024 2048 \
---model_path /PATH/TO/LLAMA2/llama-2-7b-chat 
+    --context_length 16 32 64 128 256 512 1024 2048 \
+    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat 
 ```
 To benchmark chunk prefilling, use:
 ```bash
 python benchmark_context.py --chunk_prefilling \
---model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
---question_length 32 --context_length 16 32 64 128 256 512 1024 
+    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
+    --question_length 32 --context_length 16 32 64 128 256 512 1024 
 ```
 Note: The kv caches in the current implementation are pre-allocated. So if you run out of memory, it might be the case that the kv cache is too large. To solve the problem, you may pass in `--max_seq_len [a smaller number]`.
 ### Support Visual Language Models (VILA-1.5, VILA, LLaVA)
