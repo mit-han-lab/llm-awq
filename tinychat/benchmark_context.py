@@ -113,16 +113,15 @@ def main():
     ], "We only support llama & falcon & mpt & vila now"
     if 'vila' in args.model_type.lower():
         model =  VilaLlamaForCausalLM(config).half()
-        # real_quantize_model_weight(
-        #     model.llm,
-        #     w_bit=4,
-        #     q_config=dict(q_group_size=args.q_group_size, zero_point=True),
-        #     init_only=True,
-        # )
-        # make_quant_attn(model.llm, device, args.flash_attn)
-        # make_quant_norm(model.llm)
-        # make_fused_mlp(model.llm)
-        # make_fused_vision_attn(model,args.device)
+        real_quantize_model_weight(
+            model.llm,
+            w_bit=4,
+            q_config=dict(q_group_size=args.q_group_size, zero_point=True),
+            init_only=True,
+        )
+        make_quant_attn(model.llm, device, args.flash_attn)
+        make_quant_norm(model.llm)
+        make_fused_mlp(model.llm)
         model = model.to(device)
         device_warmup(device)
         tune_llava_patch_embedding(model.get_vision_tower(), device=device)
