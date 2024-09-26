@@ -344,7 +344,7 @@ class Transformer(nn.Module):
                 mask = torch.cat((mask_history, mask), dim=-1)
         for layer in self.layers:
             h = layer(h, start_pos, freqs_cis, mask, chunk_prefilling)
-        h = h[:, -1:, :]  # Only the last token is useful
+        # h = h[:, -1:, :]  # Only the last token is useful
         h = self.norm(h)
         return h
 

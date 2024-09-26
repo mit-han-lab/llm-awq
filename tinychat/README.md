@@ -147,9 +147,34 @@ We have optimized the speed of the context stage and updated our code with sever
 2. Computing only the last tokens in the final logits layer. (This method is used by default.)
 3. Utilizing history KV caches in the context stage to speed up. (chunk prefilling)
 
-These optimizations are orthogonal, allowing for their combined use to achieve significant speedups. Under specific conditions, these enhancements can lead to up to an 8x increase in Time To First Token (TTFT) compared to the previous version of TinyChat. We conducted experiments using the Orin and 4090 GPUs, and detailed results are provided below. 
+These optimizations are orthogonal, enabling their combined application to achieve significant speedups. Under specific conditions, these enhancements can lead to up to an 14x speedup on 4090 GPUs and an 8x speedup on Orin GPUs in Time To First Token (TTFT) compared to the previous version of TinyChat and FP16. We conducted experiments using both Orin and 4090 GPUs, and detailed results are presented below. 
 
-
+### 4090 Results
+We measure the Time To First Token (TTFT) with a fixed question length of 32 and varying history lengths ranging from 16 to 1024 tokens. This setup means that a number of history tokens (based on the specified history length) are already input into the model. In this round, the question tokens (32 tokens) are also input, and the model takes TTFT to process these question tokens, prefill the KV cache, and generate the first token. All the tables below follows this setting. The speedup ratio in all the tables below refer to the acceleration achieved by the new method compared to FP16 inference.
+#### Llama-3-8B
+| History length            | 16    | 32    | 64    | 128   | 256   | 512   | 1024   |
+|---------------------------|:-----:|:-----:|:-----:|:-----:|:-----:|:-----:|:------:|
+| FP16 TTFT (ms)            | 21.49 | 21.38 | 23.51 | 40.82 | 47.15 | 75.41 | 162.27 | 
+| Legacy TinyChat TTFT (ms) | 15.20 | 14.89 | 17.61 | 29.66 | 44.11 | 72.50 | 163.90 |
+| New TinyChat TTFT (ms)    | 14.30 | 14.05 | 14.05 | 14.43 | 14.38 | 14.35 | 14.49  |
+| New TinyChat Speedup      | 1.54x | 1.54x | 1.69x | 2.84x | 3.33x | 5.27x | 11.45x |
+#### Llama-3-VILA-1.5-8B*
+| History length            | 16    | 32    | 64    | 128   | 256   | 512    | 1024   |
+|---------------------------|:-----:|:-----:|:-----:|:-----:|:-----:|:------:|:------:|
+| FP16 TTFT (ms)            | 22.20 | 22.00 | 24.17 | 41.85 | 62.97 | 101.84 | 217.57 | 
+| Legacy TinyChat TTFT (ms) | 16.14 | 15.98 | 18.28 | 30.72 | 59.67 | 98.52  | 219.19 |
+| New TinyChat TTFT (ms)    | 14.86 | 14.69 | 14.64 | 14.90 | 14.91 | 14.95  | 14.90  |
+| New TinyChat Speedup      | 1.49x | 1.50x | 1.65x | 2.81x | 4.22x | 6.81x  | 14.60x |
+*: For VILA, the speedup of the new TinyChat is more significant since the model only decodes images during the first round. In the experiment, We assume that approximately 75% of the history tokens represent images, leading to the number of images in the table being 0, 0, 0, 0, 1, 2, 4. This assumption is reasonable to some extent, considering that a single image is decoded into 196 tokens.
+### Orin Results(Llama-3-8B)
+We follow the setup above and the results are as below.
+#### Llama-3-8B
+| History length            | 16     | 32     | 64     | 128    | 256    | 512    | 1024    |
+|---------------------------|:------:|:------:|:------:|:------:|:------:|:------:|:-------:|
+| FP16 TTFT (ms)            | 107.10 | 108.81 | 114.07 | 224.78 | 343.95 | 582.54 | 1048.11 |
+| Legacy TinyChat TTFT (ms) | 92.04  | 111.31 | 106.60 | 160.78 | 278.47 | 528.70 | 1145.35 |
+| New TinyChat TTFT (ms)    | 65.57  | 65.40  | 66.49  | 67.15  | 73.29  | 84.67  | 118.53  |
+| New TinyChat Speedup      | 1.52x  | 1.65x  | 1.70x  | 3.30x  | 4.51x  | 6.75x  | 8.65x   | 
 
 ## Usage
 

@@ -111,7 +111,6 @@ def LlavaStreamGenerator(
     input_echo_len = len(input_ids)
     output_ids = list(input_ids)
     len_input = len(input)
-
     if gen_params.top_k <= 0:
         top_k = gen_params.n_vocab
     else:
