@@ -165,6 +165,7 @@ We measure the Time To First Token (TTFT) with a fixed question length of 32 and
 | Legacy TinyChat TTFT (ms) | 16.14 | 15.98 | 18.28 | 30.72 | 59.67 | 98.52  | 219.19 |
 | New TinyChat TTFT (ms)    | 14.86 | 14.69 | 14.64 | 14.90 | 14.91 | 14.95  | 14.90  |
 | New TinyChat Speedup      | 1.49x | 1.50x | 1.65x | 2.81x | 4.22x | 6.81x  | 14.60x |
+
 *: For VILA, the speedup of the new TinyChat is more significant since the model only decodes images during the first round. In the experiment, We assume that approximately 75% of the history tokens represent images, leading to the number of images in the table being 0, 0, 0, 0, 1, 2, 4. This assumption is reasonable to some extent, considering that a single image is decoded into 196 tokens.
 ### Orin Results(Llama-3-8B)
 We follow the setup above and the results are as below.
