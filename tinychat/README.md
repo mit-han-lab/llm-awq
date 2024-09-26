@@ -167,7 +167,7 @@ We measure the Time To First Token (TTFT) with a fixed question length of 32 and
 | New TinyChat Speedup      | 1.49x | 1.50x | 1.65x | 2.81x | 4.22x | 6.81x  | 14.60x |
 
 *: For VILA, the speedup of the new TinyChat is more significant since the model only decodes images during the first round. In the experiment, We assume that approximately 75% of the history tokens represent images, leading to the number of images in the table being 0, 0, 0, 0, 1, 2, 4. This assumption is reasonable to some extent, considering that a single image is decoded into 196 tokens.
-### Orin Results(Llama-3-8B)
+### Orin Results
 We follow the setup above and the results are as below.
 #### Llama-3-8B
 | History length            | 16     | 32     | 64     | 128    | 256    | 512    | 1024    |
@@ -336,8 +336,13 @@ python vlm_demo_new.py \
     --vis-image #Optional
 ```
 
-to run the terminal demo directly. You can also use``` --flash --chunk_prefilling``` to accelerate.
-
+to run the terminal demo directly. You can also use``` --flash --chunk_prefilling``` to accelerate. We also support context stage benckmarking for VILA. 
+```bash
+python benchmark_context.py --flash --chunk_prefilling     \
+    --model_path PATH/TO/Llama-3-VILA1.5-8B     \
+    --question_length 32 --context_length 16 32 64 128 256 512 1024 \
+    --model_type vila
+```
 Note: if you enable `--vis-image` mode, TinyChat will print input images directly in your terminal. You may need to install [termvisage](https://github.com/AnonymouX47/termvisage) to enable this mode. A [terminal emulator](https://github.com/AnonymouX47/termvisage?tab=readme-ov-file#requirements) is also required.
 
 Note: VILA model family supports multi-image inputs. You can input multiple images in `/PATH/TO/INPUT/IMAGE` above, each image should be seperated by `,`.
