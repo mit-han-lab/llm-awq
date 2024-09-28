@@ -170,7 +170,7 @@ def main(args):
             image_token = get_image_token(model, args.model_path)
             image_token_holder = (
                 tinychat.utils.constants.LLAVA_DEFAULT_IM_TOKEN_PLACE_HOLDER
-            ) 
+            )
             im_token_count = input_prompt.count(image_token_holder)
             if im_token_count == 0:
                 model_prompter.insert_prompt(image_token * image_num + input_prompt)

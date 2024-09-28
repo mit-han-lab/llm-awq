@@ -9,7 +9,11 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, modeli
 import tinychat.utils.constants
 from tinychat.utils.load_quant import load_awq_model
 from awq.quantize.quantizer import real_quantize_model_weight
-from tinychat.utils.tune import tune_all_wqlinears, device_warmup,tune_llava_patch_embedding
+from tinychat.utils.tune import (
+    tune_all_wqlinears,
+    device_warmup,
+    tune_llava_patch_embedding,
+)
 from tinychat.modules import make_quant_norm, make_quant_attn, make_fused_mlp
 
 
@@ -109,10 +113,10 @@ def main():
         "llama",
         "falcon",
         "mpt",
-        "vila"
+        "vila",
     ], "We only support llama & falcon & mpt & vila now"
-    if 'vila' in args.model_type.lower():
-        model =  VilaLlamaForCausalLM(config).half()
+    if "vila" in args.model_type.lower():
+        model = VilaLlamaForCausalLM(config).half()
         real_quantize_model_weight(
             model.llm,
             w_bit=4,
@@ -126,32 +130,42 @@ def main():
         device_warmup(device)
         tune_llava_patch_embedding(model.get_vision_tower(), device=device)
         if not args.chunk_prefilling:
-            image_num=[int(int("".join(i))*0.75/196) for i in args.context_length]#consider about three thirds of the history tokens are images
-            if sum(image_num)>0:
-                image_tensor=2*torch.rand((max(image_num),3,384,384))-1
+            image_num = [
+                int(int("".join(i)) * 0.75 / 196) for i in args.context_length
+            ]  # consider about three thirds of the history tokens are images
+            if sum(image_num) > 0:
+                image_tensor = 2 * torch.rand((max(image_num), 3, 384, 384)) - 1
                 image_tensor.half().to(device)
             else:
-                image_tensor=None
+                image_tensor = None
 
         print("huggingface ckpt loaded")
-        
+
         # warming up
         input_ids = [1 for _ in range(2048)]
         inputs = torch.as_tensor([input_ids], device=device)
-        out = model(inputs, start_pos=0, chunk_prefilling=args.chunk_prefilling)  # warmup
+        out = model(
+            inputs, start_pos=0, chunk_prefilling=args.chunk_prefilling
+        )  # warmup
 
         if not args.chunk_prefilling:
-            for i,context_length in enumerate(args.context_length):
+            for i, context_length in enumerate(args.context_length):
                 context_length = int("".join(context_length))
                 time_lis = []
                 if image_num[i]:
-                    images=image_tensor[0:image_num[i],:,:,:]
-                    input_ids = [-200 for _ in range(image_num[i])]+[1 for _ in range(context_length-196*image_num[i])]
+                    images = image_tensor[0 : image_num[i], :, :, :]
+                    input_ids = [-200 for _ in range(image_num[i])] + [
+                        1 for _ in range(context_length - 196 * image_num[i])
+                    ]
                 else:
-                    images=None
+                    images = None
                     input_ids = [1 for _ in range(context_length)]
                 print("-" * 80)
-                print("Context length: {} with {} pictures".format(context_length,image_num[i]))
+                print(
+                    "Context length: {} with {} pictures".format(
+                        context_length, image_num[i]
+                    )
+                )
                 with torch.inference_mode():
                     for i in range(10):  # Run ten times and get the average value
                         start_pos = 0
@@ -162,7 +176,7 @@ def main():
                             inputs,
                             start_pos=start_pos,
                             chunk_prefilling=args.chunk_prefilling,
-                            images=images
+                            images=images,
                         )
                         start_pos += inputs.shape[1]
                         torch.cuda.synchronize()
@@ -174,13 +188,13 @@ def main():
                     print(f"Time To First Token: {np.mean(time_lis):.5f} s.")
                     print("-" * 80)
         else:
-            for i,(context_length, question_length) in enumerate(zip(
-                args.context_length, args.question_length
-            )):
+            for i, (context_length, question_length) in enumerate(
+                zip(args.context_length, args.question_length)
+            ):
                 context_length = int("".join(context_length))
                 question_length = int("".join(question_length))
                 input_ids_old = [1 for _ in range(context_length)]
-                images=None
+                images = None
                 input_ids_new = [1 for _ in range(question_length)]
                 time_lis = []
                 print("-" * 80)
@@ -199,7 +213,7 @@ def main():
                                 inputs,
                                 start_pos=start_pos,
                                 chunk_prefilling=args.chunk_prefilling,
-                                images=None
+                                images=None,
                             )
                             start_pos += context_length
 
@@ -220,7 +234,9 @@ def main():
                         time_lis.append(t_ed - t_st)
                         if args.verbose:
                             print(i, t_ed - t_st)
-                    print(f"Time To First Token of this round: {np.mean(time_lis):.5f} s.")
+                    print(
+                        f"Time To First Token of this round: {np.mean(time_lis):.5f} s."
+                    )
                     print("-" * 80)
     else:
         model = model_type_dict[args.model_type.lower()](config).half()
@@ -237,13 +253,15 @@ def main():
         make_quant_norm(model)
         make_fused_mlp(model)
         device_warmup(device)
-        
+
         print("huggingface ckpt loaded")
-        
+
         # warming up
         input_ids = [1 for _ in range(2048)]
         inputs = torch.as_tensor([input_ids], device=device)
-        out = model(inputs, start_pos=0, chunk_prefilling=args.chunk_prefilling)  # warmup
+        out = model(
+            inputs, start_pos=0, chunk_prefilling=args.chunk_prefilling
+        )  # warmup
 
         if not args.chunk_prefilling:
             for context_length in args.context_length:
@@ -317,7 +335,9 @@ def main():
                         time_lis.append(t_ed - t_st)
                         if args.verbose:
                             print(i, t_ed - t_st)
-                    print(f"Time To First Token of this round: {np.mean(time_lis):.5f} s.")
+                    print(
+                        f"Time To First Token of this round: {np.mean(time_lis):.5f} s."
+                    )
                     print("-" * 80)
 
 
