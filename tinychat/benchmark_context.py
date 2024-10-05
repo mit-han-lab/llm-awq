@@ -135,7 +135,7 @@ def main():
             ]  # consider about three thirds of the history tokens are images
             if sum(image_num) > 0:
                 image_tensor = 2 * torch.rand((max(image_num), 3, 384, 384)) - 1
-                image_tensor.half().to(device)
+                image_tensor = image_tensor.half().to(device)
             else:
                 image_tensor = None
 
