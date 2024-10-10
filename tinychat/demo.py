@@ -72,10 +72,13 @@ def stream_output(output_stream):
         print("Speed of Inference")
         print("-" * 50)
         print(
+            f"Context Stage : { context_time/context_tokens* 1000:.2f} ms/token (total time: { context_time:.3f} s)"
+        )
+        print(
             f"Generation Stage : {np.average(generation_time_list) * 1000:.2f} ms/token"
         )
         print("=" * 50)
-    return " ".join(output_text)
+    return " ".join(output_text), total_tokens
 
 
 if __name__ == "__main__":
@@ -118,6 +121,16 @@ if __name__ == "__main__":
         "--single_round",
         action="store_true",
         help="whether to memorize previous conversations",
+    )
+    parser.add_argument(
+        "--flash_attn",
+        action="store_true",
+        help="whether to use flash attention",
+    )
+    parser.add_argument(
+        "--chunk_prefilling",
+        action="store_true",
+        help="If used, in context stage, the history tokens will not be recalculated, greatly speeding up the calculation",
     )
 
     args = parser.parse_args()
@@ -203,7 +216,12 @@ if __name__ == "__main__":
     if args.precision == "W4A16" and args.model_type.lower() == "llama":
         from tinychat.modules import make_quant_norm, make_quant_attn
 
-        make_quant_attn(model, args.device)
+        if args.flash_attn:
+            print("Enabling flash-attention!")
+            make_quant_attn(model, args.device, args.flash_attn)
+        else:
+            print("Disabling flash-attention!")
+            make_quant_attn(model, args.device)
         make_quant_norm(model)
 
     if args.max_seq_len <= 1024:
@@ -213,6 +231,7 @@ if __name__ == "__main__":
     model_prompter = get_prompter(args.model_type, args.model_path, short_prompt)
     stop_token_ids = get_stop_token_ids(args.model_type, args.model_path)
     count = 0
+    start_pos = 0
     while True:
         # Get input from the user
         input_prompt = input("USER: ")
@@ -224,13 +243,19 @@ if __name__ == "__main__":
             model,
             tokenizer,
             model_prompter.model_input,
+            start_pos,
             gen_params,
             device=args.device,
             stop_token_ids=stop_token_ids,
+            chunk_prefilling=args.chunk_prefilling,
         )
-        outputs = stream_output(output_stream)
+        outputs, total_tokens = stream_output(output_stream)
+        if args.chunk_prefilling:
+            start_pos += total_tokens
+        else:
+            start_pos = 0
         if (
             args.single_round is not True and args.max_seq_len > 512
         ):  # Only memorize previous conversations when kv_cache_size > 512
-            model_prompter.update_template(outputs)
+            model_prompter.update_template(outputs, args.chunk_prefilling)
         count += 1

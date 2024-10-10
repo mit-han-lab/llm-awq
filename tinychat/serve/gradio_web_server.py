@@ -151,10 +151,7 @@ def regenerate(state, image_process_mode, request: gr.Request):
     if type(prev_human_msg[1]) in (tuple, list):
         prev_human_msg[1] = (*prev_human_msg[1][:2], image_process_mode)
     state.skip_next = False
-    return (
-        (state, state.to_gradio_chatbot(), "")
-        + (disable_btn,) * BUTTON_LIST_LEN
-    )
+    return (state, state.to_gradio_chatbot(), "") + (disable_btn,) * BUTTON_LIST_LEN
 
 
 def change_prompt_style(state, prompt_style_btn, request: gr.Request):
@@ -169,7 +166,7 @@ def clear_history(prompt_style_btn, request: gr.Request):
     return (
         (state, state.to_gradio_chatbot(), "")
         + (None,) * IMAGE_BOX_NUM
-        + (None,) # Videobox
+        + (None,)  # Videobox
         + (disable_btn,) * BUTTON_LIST_LEN
     )
 
@@ -177,6 +174,7 @@ def clear_history(prompt_style_btn, request: gr.Request):
 def clear_text_history(state, prompt_style_btn, request: gr.Request):
     state = get_conversation(prompt_style_btn)
     return (state, state.to_gradio_chatbot())
+
 
 def clear_after_click_example_1_video(videobox, textbox):
     imagebox = None
@@ -186,6 +184,7 @@ def clear_after_click_example_1_video(videobox, textbox):
     prompt_style_btn = "default"
     return (state, imagebox, imagebox_2, imagebox_3, videobox, prompt_style_btn)
 
+
 def clear_after_click_example_1_image(imagebox, textbox):
     imagebox_2 = None
     imagebox_3 = None
@@ -194,12 +193,14 @@ def clear_after_click_example_1_image(imagebox, textbox):
     prompt_style_btn = "default"
     return (state, imagebox, imagebox_2, imagebox_3, videobox, prompt_style_btn)
 
+
 def clear_after_click_example_2_image(imagebox, imagebox_2, textbox):
     imagebox_3 = None
     videobox = None
     state = get_conversation("default")
     prompt_style_btn = "default"
     return (state, imagebox, imagebox_2, imagebox_3, videobox, prompt_style_btn)
+
 
 def clear_after_click_example_3_image(imagebox, imagebox_2, imagebox_3, textbox):
     videobox = None
@@ -216,22 +217,31 @@ def clear_after_click_example_3_image_icl(imagebox, imagebox_2, imagebox_3, text
 
 
 def add_images(
-    state, imagebox, imagebox_2, imagebox_3, videobox, image_process_mode, request: gr.Request
+    state,
+    imagebox,
+    imagebox_2,
+    imagebox_3,
+    videobox,
+    image_process_mode,
+    request: gr.Request,
 ):
     if state.image_loaded:
         # return (state,) + (None,) * IMAGE_BOX_NUM
         return state
-    
+
     def extract_frames(video_path):
         import cv2
         from PIL import Image
+
         vidcap = cv2.VideoCapture(video_path)
         fps = vidcap.get(cv2.CAP_PROP_FPS)
         frame_count = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration = frame_count / fps
 
         frame_interval = frame_count // 8
-        print("duration:", duration, "frames:", frame_count, "intervals:", frame_interval)
+        print(
+            "duration:", duration, "frames:", frame_count, "intervals:", frame_interval
+        )
         # frame_interval = 10
 
         def get_frame(max_frames):
@@ -239,7 +249,7 @@ def add_images(
             # vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
             # ret, frame = vidcap.read()
             images = []
-            count = 0 
+            count = 0
             success = True
             while success:
                 success, frame = vidcap.read()
@@ -263,7 +273,9 @@ def add_images(
         # return [img, img1, img, img1, img, img1,]
         return get_frame(8)
 
-    frames = [None, ]
+    frames = [
+        None,
+    ]
     if videobox is not None:
         frames = extract_frames(videobox)
         # add frames as regular images
@@ -449,9 +461,11 @@ def http_bot(
         "temperature": float(temperature),
         "top_p": float(top_p),
         "max_new_tokens": min(int(max_new_tokens), 1536),
-        "stop": state.sep
-        if state.sep_style in [SeparatorStyle.SINGLE, SeparatorStyle.MPT]
-        else state.sep2,
+        "stop": (
+            state.sep
+            if state.sep_style in [SeparatorStyle.SINGLE, SeparatorStyle.MPT]
+            else state.sep2
+        ),
         "images": f"List of {len(state.get_images())} images: {all_image_hash}",
     }
 
@@ -690,25 +704,25 @@ def build_demo(embed_mode):
                 cur_dir = os.path.dirname(os.path.abspath(__file__))
                 with gr.Row(equal_height=True):
                     gr.Examples(
-                            examples=[
-                                [
-                                    f"{cur_dir}/examples/video/qZDF__7LNKc.4.mp4",
-                                    "Elaborate on the visual and narrative elements of the video in detail.",
-                                ],
+                        examples=[
+                            [
+                                f"{cur_dir}/examples/video/qZDF__7LNKc.4.mp4",
+                                "Elaborate on the visual and narrative elements of the video in detail.",
                             ],
-                            label="Video Example",
-                            inputs=[videobox, textbox],
-                            fn=clear_after_click_example_1_video,
-                            outputs=[
-                                state,
-                                imagebox,
-                                imagebox_2,
-                                imagebox_3,
-                                videobox,
-                                prompt_style_btn,
-                            ],
-                            run_on_click=True,
-                        )
+                        ],
+                        label="Video Example",
+                        inputs=[videobox, textbox],
+                        fn=clear_after_click_example_1_video,
+                        outputs=[
+                            state,
+                            imagebox,
+                            imagebox_2,
+                            imagebox_3,
+                            videobox,
+                            prompt_style_btn,
+                        ],
+                        run_on_click=True,
+                    )
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=1, min_width=50):
                         gr.Examples(
@@ -851,7 +865,14 @@ def build_demo(embed_mode):
                     inputs=[imagebox, imagebox_2, textbox],
                     label="Multi-image Example 1",
                     fn=clear_after_click_example_2_image,
-                    outputs=[state, imagebox, imagebox_2, imagebox_3, videobox, prompt_style_btn],
+                    outputs=[
+                        state,
+                        imagebox,
+                        imagebox_2,
+                        imagebox_3,
+                        videobox,
+                        prompt_style_btn,
+                    ],
                     run_on_click=True,
                 )
 
@@ -867,7 +888,14 @@ def build_demo(embed_mode):
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
                     label="Multi-image Example 2",
                     fn=clear_after_click_example_3_image,
-                    outputs=[state, imagebox, imagebox_2, imagebox_3, videobox, prompt_style_btn],
+                    outputs=[
+                        state,
+                        imagebox,
+                        imagebox_2,
+                        imagebox_3,
+                        videobox,
+                        prompt_style_btn,
+                    ],
                     run_on_click=True,
                 )
 
@@ -883,7 +911,14 @@ def build_demo(embed_mode):
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
                     label="Multi-image Example 3",
                     fn=clear_after_click_example_3_image,
-                    outputs=[state, imagebox, imagebox_2, imagebox_3, videobox, prompt_style_btn],
+                    outputs=[
+                        state,
+                        imagebox,
+                        imagebox_2,
+                        imagebox_3,
+                        videobox,
+                        prompt_style_btn,
+                    ],
                     run_on_click=True,
                 )
 
@@ -899,7 +934,14 @@ def build_demo(embed_mode):
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
                     label="In-context Learning Example 1 (Please switch the prompt style to 'no-sys')",
                     fn=clear_after_click_example_3_image_icl,
-                    outputs=[state, imagebox, imagebox_2, imagebox_3, videobox, prompt_style_btn],
+                    outputs=[
+                        state,
+                        imagebox,
+                        imagebox_2,
+                        imagebox_3,
+                        videobox,
+                        prompt_style_btn,
+                    ],
                     run_on_click=True,
                 )
 
@@ -915,7 +957,14 @@ def build_demo(embed_mode):
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
                     label="In-context Learning Example 2 (Please switch the prompt style to 'no-sys')",
                     fn=clear_after_click_example_3_image_icl,
-                    outputs=[state, imagebox, imagebox_2, imagebox_3, videobox, prompt_style_btn],
+                    outputs=[
+                        state,
+                        imagebox,
+                        imagebox_2,
+                        imagebox_3,
+                        videobox,
+                        prompt_style_btn,
+                    ],
                     run_on_click=True,
                 )
 
@@ -931,7 +980,14 @@ def build_demo(embed_mode):
                     inputs=[imagebox, imagebox_2, imagebox_3, textbox],
                     label="In-context Learning Example 3 (Please switch the prompt style to 'no-sys')",
                     fn=clear_after_click_example_3_image_icl,
-                    outputs=[state, imagebox, imagebox_2, imagebox_3, videobox, prompt_style_btn],
+                    outputs=[
+                        state,
+                        imagebox,
+                        imagebox_2,
+                        imagebox_3,
+                        videobox,
+                        prompt_style_btn,
+                    ],
                     run_on_click=True,
                 )
 
@@ -1022,7 +1078,8 @@ def build_demo(embed_mode):
         clear_btn.click(
             clear_history,
             [prompt_style_btn],
-            [state, chatbot, textbox, imagebox, imagebox_2, imagebox_3, videobox] + btn_list,
+            [state, chatbot, textbox, imagebox, imagebox_2, imagebox_3, videobox]
+            + btn_list,
             queue=False,
         )
 

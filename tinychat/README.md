@@ -71,7 +71,6 @@ We use the default implementation from Huggingface for the FP16 baseline. The IN
 The latency reported in all tables are per-token latency for the generation stage.
 
 ### A6000 Results
-
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
 | ----------- |:-----------------:|:-----------------:|:-------:|
 | LLaMA-3-8B  | 24.95             | 10.68             | 2.34x   |         
@@ -101,7 +100,6 @@ The latency reported in all tables are per-token latency for the generation stag
 | VILA-13B    | OOM               | 10.01             | --      |
 
 *: The reason why LLaMA-2-7B is slower than Vicuna-7B is because we need a longer prompt (with > 500 tokens) to prevent the model from talking with itself. If we use the benchmarking strategy from exLLaMA (i.e. only 4 context tokens), our speed is around 195 tokens / second.
-
 ### Orin Results
 
 | Model       | FP16 latency (ms) | INT4 latency (ms) | Speedup |
@@ -143,10 +141,52 @@ We recently evaluated AWQ's performance on the Visual Language Models. Here is a
 | FP16      | 84.3  | 64.6 | 62.2   | 87.2  | 73.6  | 87.3 | 1726.82 | 82.4 | 80.2   | 69.1 |
 | AWQ-INT4   | 84.1  | 64.4 | 61.3   | 86.7  | 73.2  | 88.2 | 1714.79 | 83.2 | 79.6   | 68.9 | 
 
+## New Optimization of Context Stage
+We have optimized the speed of the context stage and updated our code with several enhancements, including the adoption of FlashAttention and the elimination of redundant computations. The key optimizations include:
+1. Adopting the FlashAttention kernel. (Currently we only support single-batch operations to achieve better results)
+2. Computing only the last tokens in the final logits layer. (This method is used by default.)
+3. Utilizing history KV caches in the context stage to speed up. (chunk prefilling)
+
+These optimizations are orthogonal, enabling their combined application to achieve significant speedups. Under specific conditions, these enhancements can lead to up to an 14x speedup on 4090 GPUs and an 8x speedup on Orin GPUs in Time To First Token (TTFT) compared to the previous version of TinyChat and FP16. We conducted experiments using both Orin and 4090 GPUs, and detailed results are presented below. 
+
+### 4090 Results
+We measure the Time To First Token (TTFT) with a fixed question length of 32 and varying history lengths ranging from 16 to 1024 tokens. This setup means that a number of history tokens (based on the specified history length) are already input into the model. In this round, the question tokens (32 tokens) are also input, and the model takes TTFT to process these question tokens, prefill the KV cache, and generate the first token. All the tables below follows this setting. The speedup ratio in all the tables below refer to the acceleration achieved by the new method compared to FP16 inference.
+#### Llama-3-8B
+| History length            | 16    | 32    | 64    | 128   | 256   | 512   | 1024   |
+|---------------------------|:-----:|:-----:|:-----:|:-----:|:-----:|:-----:|:------:|
+| FP16 TTFT (ms)            | 21.49 | 21.38 | 23.51 | 40.82 | 47.15 | 75.41 | 162.27 | 
+| Legacy TinyChat TTFT (ms) | 15.20 | 14.89 | 17.61 | 29.66 | 44.11 | 72.50 | 163.90 |
+| New TinyChat TTFT (ms)    | 14.30 | 14.05 | 14.05 | 14.43 | 14.38 | 14.35 | 14.49  |
+| New TinyChat Speedup      | 1.54x | 1.54x | 1.69x | 2.84x | 3.33x | 5.27x | 11.45x |
+#### Llama-3-VILA-1.5-8B*
+| History length            | 16    | 32    | 64    | 128   | 256   | 512    | 1024   |
+|---------------------------|:-----:|:-----:|:-----:|:-----:|:-----:|:------:|:------:|
+| FP16 TTFT (ms)            | 22.20 | 22.00 | 24.17 | 41.85 | 62.97 | 101.84 | 217.57 | 
+| Legacy TinyChat TTFT (ms) | 16.14 | 15.98 | 18.28 | 30.72 | 59.67 | 98.52  | 219.19 |
+| New TinyChat TTFT (ms)    | 14.86 | 14.69 | 14.64 | 14.90 | 14.91 | 14.95  | 14.90  |
+| New TinyChat Speedup      | 1.49x | 1.50x | 1.65x | 2.81x | 4.22x | 6.81x  | 14.60x |
+
+*: For VILA, the speedup of the new TinyChat is more significant since the model only decodes images during the first round. In the experiment, We assume that approximately 75% of the history tokens represent images, leading to the number of images in the table being 0, 0, 0, 0, 1, 2, 4. This assumption is reasonable to some extent, considering that a single image is decoded into 196 tokens.
+### Orin Results
+We follow the setup above and the results are as below.
+#### Llama-3-8B
+| History length            | 16     | 32     | 64     | 128    | 256    | 512    | 1024    |
+|---------------------------|:------:|:------:|:------:|:------:|:------:|:------:|:-------:|
+| FP16 TTFT (ms)            | 107.10 | 108.81 | 114.07 | 224.78 | 343.95 | 582.54 | 1048.11 |
+| Legacy TinyChat TTFT (ms) | 92.04  | 111.31 | 106.60 | 160.78 | 278.47 | 528.70 | 1145.35 |
+| New TinyChat TTFT (ms)    | 65.57  | 65.40  | 66.49  | 67.15  | 73.29  | 84.67  | 118.53  |
+| New TinyChat Speedup      | 1.52x  | 1.65x  | 1.70x  | 3.30x  | 4.51x  | 6.75x  | 8.65x   | 
 
 ## Usage
 
-1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies.
+1. Please follow the [AWQ installation guidance](https://github.com/mit-han-lab/llm-awq#readme) to install AWQ and its dependencies. If you want to use FlashAttention, start by installing it with: ```pip install flash-attn --no-build-isolation```. However, for some GPUs such as Jetson Orin, there is no pre-built version available. You will need to build it from source. Follow these commands:
+```bash
+git clone https://github.com/Dao-AILab/flash-attention.git
+cd flash-attention
+sed -i '168 a\    cc_flag.append("-gencode")\n\    cc_flag.append("arch=compute_87,code=sm_87")' setup.py
+python setup.py install
+``` 
+This process may take some time as it involves compiling the code. Additionally, please note that these commands are just for Jetson Orin GPUs, whose CUDA compute capability is 87. For other GPUs, you may use ```nvidia-smi --query-gpu=compute_cap --format=csv``` to get the compute capability and merely change 87 to that. 
 
 2. Download the pretrained instruction-tuned LLMs:
    
@@ -210,6 +250,8 @@ python demo.py --model_type llama \
     --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
     --precision W16A16
 ```
+You can now try using FlashAttention along with chunk prefilling. Use the following two arguments when running demo: ```
+--flash --chunk_prefilling```. 
 
 The above command works well for most cloud and desktop GPUs, since their CPU and GPU memory space are separated. However, for edge GPUs with shared host and device memory, in order to run larger models (e.g. LLaMA-2-70B on 64GB Orin), it is necessary to break down the pretrained checkpoints into small pieces:
 
@@ -240,9 +282,19 @@ python benchmark.py --model_type llama \
     --model_path /PATH/TO/LLAMA2/llama-2-7b-chat    \
     --q_group_size 128
 ```
-
+We also have a file for benchmarking the context stage of our new methods. You can benchmark the context stage of TinyChat with FlashAttention: 
+``` bash
+python benchmark_context.py --flash \
+    --context_length 16 32 64 128 256 512 1024 2048 \
+    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat 
+```
+To benchmark chunk prefilling, use:
+```bash
+python benchmark_context.py --chunk_prefilling \
+    --model_path /PATH/TO/LLAMA2/llama-2-7b-chat \
+    --question_length 32 --context_length 16 32 64 128 256 512 1024 
+```
 Note: The kv caches in the current implementation are pre-allocated. So if you run out of memory, it might be the case that the kv cache is too large. To solve the problem, you may pass in `--max_seq_len [a smaller number]`.
-
 ### Support Visual Language Models (VILA-1.5, VILA, LLaVA)
 
 Our TinyChat also supports visual language models. Follow the instructions below to run VLMs on your own devices!
@@ -284,8 +336,13 @@ python vlm_demo_new.py \
     --vis-image #Optional
 ```
 
-to run the terminal demo directly.
-
+to run the terminal demo directly. You can also use``` --flash --chunk_prefilling``` to accelerate. We also support context stage benckmarking for VILA. 
+```bash
+python benchmark_context.py --flash --chunk_prefilling     \
+    --model_path PATH/TO/Llama-3-VILA1.5-8B     \
+    --question_length 32 --context_length 16 32 64 128 256 512 1024 \
+    --model_type vila
+```
 Note: if you enable `--vis-image` mode, TinyChat will print input images directly in your terminal. You may need to install [termvisage](https://github.com/AnonymouX47/termvisage) to enable this mode. A [terminal emulator](https://github.com/AnonymouX47/termvisage?tab=readme-ov-file#requirements) is also required.
 
 Note: VILA model family supports multi-image inputs. You can input multiple images in `/PATH/TO/INPUT/IMAGE` above, each image should be seperated by `,`.

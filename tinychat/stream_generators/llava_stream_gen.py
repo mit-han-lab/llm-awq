@@ -12,6 +12,9 @@ from transformers.generation.logits_process import (
     TopKLogitsWarper,
     TopPLogitsWarper,
 )
+from llava.constants import (
+    IMAGE_TOKEN_INDEX,
+)
 
 context_tokens = 0
 context_time = 0.0
@@ -40,6 +43,7 @@ def prepare_logits_processor(
             TopKLogitsWarper(top_k=top_k, min_tokens_to_keep=min_tokens_to_keep)
         )
     return processor_list
+
 
 #  This function is inspired by https://github.com/haotian-liu/LLaVA/blob/main/llava/mm_utils.py#L185
 def tokenizer_image_token(
@@ -78,14 +82,17 @@ def LlavaStreamGenerator(
     model,
     tokenizer,
     input: str,
+    start_pos: int,
     gen_params: dict,
     device: str = "cuda:0",
-    stream_interval: int = 2,
+    stream_interval: int = 1,
     echo: bool = False,
     stop_token_ids=[],
     image_tensor: Optional[torch.FloatTensor] = None,
+    chunk_prefilling: bool = False,
 ):
-    # input_ids = tokenizer(input).input_ids
+    if chunk_prefilling and start_pos != 0:  # </s>USER:2,11889 while USER:3148,1001
+        input = "</s>" + input
     input_ids = (
         tokenizer_image_token(
             input,
@@ -96,12 +103,14 @@ def LlavaStreamGenerator(
         .unsqueeze(0)
         .to(device)
     )
+    if chunk_prefilling and start_pos != 0:
+        input_ids = input_ids[
+            :, 2:
+        ]  # tokenizer will add a <s> at the beginning, so to delete it
     special_token = "<image>" in input
     input_echo_len = len(input_ids)
-    # print(input_ids)
     output_ids = list(input_ids)
     len_input = len(input)
-
     if gen_params.top_k <= 0:
         top_k = gen_params.n_vocab
     else:
@@ -113,11 +122,12 @@ def LlavaStreamGenerator(
     past_key_values = out = None
     stop_token_ids.append(tokenizer.eos_token_id)
     max_new_tokens = gen_params.n_predict
-    start_pos = 0
 
     batch_size = 1  # TODO: support multi-batch
     position_ids = [
-        torch.arange(input_ids.numel(), dtype=torch.long, device=device)
+        torch.arange(
+            start_pos, start_pos + input_ids.numel(), dtype=torch.long, device=device
+        )
         for i in range(batch_size)
     ]
     position_ids = torch.stack(position_ids)
@@ -181,8 +191,11 @@ def LlavaStreamGenerator(
                 position_ids=position_ids,
                 attention_mask=attention_mask,
                 special_token=special_token,
+                chunk_prefilling=chunk_prefilling,
             )
-            start_pos += out.shape[1]
+            start_pos += (
+                inputs.shape[1] + 195 * torch.sum(inputs[0] == IMAGE_TOKEN_INDEX).item()
+            )
             logits = out
         torch.cuda.synchronize()
         t_ed = time.time()
@@ -199,6 +212,7 @@ def LlavaStreamGenerator(
             last_token_logits = logits[:, -1, :]
         if gen_params.temp < 1e-5 or gen_params.top_p < 1e-8:  # greedy
             token = int(torch.argmax(last_token_logits))
+            print(token)
         else:
             probs = torch.softmax(last_token_logits, dim=-1)
             token = int(torch.multinomial(probs, num_samples=1))
@@ -210,7 +224,9 @@ def LlavaStreamGenerator(
         global generation_time_list
         if i == 0:
             context_time = t_ed - t_st
-            context_tokens = logits.shape[1]
+            context_tokens = (
+                inputs.shape[1] + 195 * torch.sum(inputs[0] == IMAGE_TOKEN_INDEX).item()
+            )
             generation_time_list = []
         else:
             generation_time_list.append(t_ed - t_st)

@@ -90,6 +90,9 @@ def stream_output(output_stream, time_stats: TimeStats = None):
     print(" ".join(output_text[pre:]), flush=True)
     if "timing" in outputs and outputs["timing"] is not None:
         timing = outputs["timing"]
+        total_tokens = timing["total_tokens"]
         if time_stats is not None:
             time_stats.update(timing)
-    return " ".join(output_text)
+    print("-" * 50)
+    print("TTFT: {:.3f} s.".format(timing["context_time"]))
+    return " ".join(output_text), total_tokens

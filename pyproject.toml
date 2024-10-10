@@ -15,13 +15,13 @@ classifiers = [
 dependencies = [
     "accelerate", "sentencepiece", "tokenizers>=0.12.1",
     "torch>=2.0.0", "torchvision", 
-    "transformers==4.36.2", 
+    "transformers==4.37.2", 
     "lm_eval==0.3.0", "texttable",
     "toml", "attributedict",
     "protobuf",
     "gradio==3.35.2", "gradio_client==0.2.9",
     "fastapi", "uvicorn",
-    "pydantic==1.10.14"
+    "pydantic==2.9.2"
 ]
 
 [tool.setuptools.packages.find]

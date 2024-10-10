@@ -23,6 +23,7 @@ from tinychat.utils.llava_image_processing import (
     vis_images,
 )
 import tinychat.utils.constants
+
 # from tinychat.models.llava_llama import LlavaLlamaForCausalLM
 from tinychat.models.vila_llama import VilaLlamaForCausalLM
 from tinychat.stream_generators.llava_stream_gen import LlavaStreamGenerator
@@ -51,7 +52,9 @@ def main(args):
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
 
-    tokenizer = AutoTokenizer.from_pretrained(os.path.join(args.model_path, "llm"), use_fast=False)
+    tokenizer = AutoTokenizer.from_pretrained(
+        os.path.join(args.model_path, "llm"), use_fast=False
+    )
     tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN_IDX = (
         tokenizer.convert_tokens_to_ids(
             [tinychat.utils.constants.LLAVA_DEFAULT_IMAGE_PATCH_TOKEN]
@@ -90,6 +93,7 @@ def main(args):
 
     elif args.precision == "W4A16":
         from tinychat.utils.load_quant import load_awq_model
+
         model.llm = load_awq_model(model.llm, args.quant_path, 4, 128, args.device)
         from tinychat.modules import (
             make_quant_norm,
@@ -98,7 +102,12 @@ def main(args):
             make_fused_vision_attn,
         )
 
-        make_quant_attn(model.llm, args.device)
+        if args.flash_attn:
+            print("Enabling flash-attention!")
+            make_quant_attn(model.llm, args.device, 1)
+        else:
+            print("Disabling flash-attention!")
+            make_quant_attn(model.llm, args.device)
         make_quant_norm(model.llm)
         # make_fused_mlp(model)
         # make_fused_vision_attn(model,args.device)
@@ -147,6 +156,7 @@ def main(args):
 
     model.eval()
     time_stats = TimeStats()
+    start_pos = 0
     while True:
         # Get input from the user
         print("=" * 50)
@@ -170,24 +180,30 @@ def main(args):
                 model_prompter.insert_prompt(input_prompt)
         else:
             model_prompter.insert_prompt(input_prompt)
+            if args.chunk_prefilling:
+                image_tensor = None  # Can insert more images in future
         output_stream = stream_generator(
             model,
             tokenizer,
             model_prompter.model_input,
+            start_pos,
             gen_params,
             device=args.device,
             stop_token_ids=stop_token_ids,
             image_tensor=image_tensor,
+            chunk_prefilling=args.chunk_prefilling,
         )
         print(output_indicator, end="", flush=True)
         if count == 0:
-            outputs = stream_output(output_stream, time_stats)
+            outputs, total_tokens = stream_output(output_stream, time_stats)
         else:
-            outputs = stream_output(output_stream)
+            outputs, total_tokens = stream_output(output_stream)
+        if args.chunk_prefilling:
+            start_pos += total_tokens
         if (
             args.single_round is not True and args.max_seq_len > 512
         ):  # Only memorize previous conversations when kv_cache_size > 512
-            model_prompter.update_template(outputs)
+            model_prompter.update_template(outputs, args.chunk_prefilling)
         count += 1
 
 
@@ -233,6 +249,16 @@ if __name__ == "__main__":
         "--empty-prompt",
         action="store_true",
         help="whether to use empty prompt template",
+    )
+    parser.add_argument(
+        "--flash_attn",
+        action="store_true",
+        help="whether to use flash attention",
+    )
+    parser.add_argument(
+        "--chunk_prefilling",
+        action="store_true",
+        help="If used, in context stage, the history tokens will not be recalculated, greatly speeding up the calculation",
     )
     args = parser.parse_args()
     main(args)

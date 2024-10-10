@@ -14,6 +14,7 @@ from tinychat.models.llama import apply_rotary_emb
 import gc
 
 import tinychat.utils.constants
+from flash_attn import flash_attn_func
 
 max_batch_size = tinychat.utils.constants.max_batch_size
 max_seq_len = tinychat.utils.constants.max_seq_len
@@ -227,6 +228,7 @@ class QuantLlamaAttentionFused(nn.Module):
         start_pos: int,
         freqs_cis: torch.Tensor,
         mask: Optional[torch.Tensor],
+        chunk_prefilling: bool,
     ):
         bsz, seqlen, _ = x.shape
         xqkv = self.qkv_proj(x)
@@ -261,9 +263,24 @@ class QuantLlamaAttentionFused(nn.Module):
 
             self.cache_v[:bsz, :, start_pos : start_pos + seqlen, :] = values_store
             self.cache_k[:bsz, :, :, start_pos : start_pos + seqlen, :] = keys_store
-
-            keys = xk
-            values = xv
+            if chunk_prefilling:
+                keys = self.cache_k[:, :, :, 0:start_pos, :]
+                keys = (
+                    keys.permute(0, 3, 1, 2, 4)
+                    .reshape(bsz, start_pos, self.num_key_value_heads, self.head_dim)
+                    .contiguous()
+                )
+                keys = torch.cat((keys, xk), dim=1)
+                values = self.cache_v[:, :, 0:start_pos, :]
+                values = (
+                    values.transpose(2, 1)
+                    .reshape(bsz, start_pos, self.num_key_value_heads, self.head_dim)
+                    .contiguous()
+                )
+                values = torch.cat((values, xv), dim=1)
+            else:
+                keys = xk
+                values = xv
 
             keys = torch.repeat_interleave(
                 keys, dim=2, repeats=self.num_key_value_groups
@@ -305,7 +322,165 @@ class QuantLlamaAttentionFused(nn.Module):
         return self.o_proj(output)
 
 
-def make_quant_attn(model, dev):
+class QuantLlamaAttentionFusedFlash(nn.Module):
+    """Flash_attn_func from 'Flash{A}ttention-2: Faster Attention with Better Parallelism and Work Partitioning' paper"""
+
+    """This function is faster than the varlen one but only supports single-batch inference"""
+
+    def __init__(self, hidden_size, num_heads, qkv_layer, o_proj, dev, args):
+        super().__init__()
+
+        self.args = args
+        self.n_local_heads = args.num_attention_heads
+        self.hidden_size = args.hidden_size
+        self.num_heads = args.num_attention_heads
+        self.head_dim = self.hidden_size // self.num_heads
+
+        self.num_key_value_heads = args.num_key_value_heads
+        self.num_key_value_groups = self.num_heads // self.num_key_value_heads
+        self.max_position_embeddings = args.max_position_embeddings
+        self.rope_theta = args.rope_theta
+        self.rope_scaling = args.rope_scaling
+        if self.rope_scaling is None:
+            self.rope_scaling = 1.0
+
+        self.qkv_proj = qkv_layer
+        self.o_proj = o_proj
+
+        kv_max_seq_len = min(max_seq_len, args.max_position_embeddings)
+
+        # following fastertransformer definition
+        self.cache_v = (
+            torch.zeros(
+                (
+                    max_batch_size,
+                    self.num_key_value_heads,
+                    # args.max_position_embeddings,
+                    kv_max_seq_len,
+                    self.head_dim,
+                )
+            )
+            .to(dev)
+            .half()
+        )  # added to half
+        # 8: pack 8 fp16 in FT, if fp32 then use 4
+        self.cache_k = (
+            torch.zeros(
+                (
+                    max_batch_size,
+                    self.num_key_value_heads,
+                    self.head_dim // 8,
+                    # args.max_position_embeddings,
+                    kv_max_seq_len,
+                    8,
+                )
+            )
+            .to(dev)
+            .half()
+        )  # added to half
+
+        # dummy
+        self.rotary_emb = QuantLlamaRotaryEmbedding(
+            self.head_dim, max_position_embeddings=2048, device="cuda:0"
+        )
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        start_pos: int,
+        freqs_cis: torch.Tensor,
+        mask: Optional[torch.Tensor],
+        chunk_prefilling: bool,
+    ):
+        bsz, seqlen, _ = x.shape
+        xqkv = self.qkv_proj(x)
+        xqkv = xqkv.view(
+            bsz,
+            seqlen,
+            self.n_local_heads + self.num_key_value_heads * 2,
+            self.head_dim,
+        )
+        xq = xqkv[:, :, 0 : self.n_local_heads]
+        xk = xqkv[
+            :, :, self.n_local_heads : (self.n_local_heads + self.num_key_value_heads)
+        ]
+        xv = xqkv[:, :, -self.num_key_value_heads :]
+
+        if seqlen > 1:
+            xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
+
+            self.cache_k = self.cache_k.to(xq)
+            self.cache_v = self.cache_v.to(xq)
+
+            values_store = xv.transpose(2, 1)
+            keys_store = (
+                xk.reshape(bsz, seqlen, self.num_key_value_heads, self.head_dim // 8, 8)
+                .permute(0, 2, 3, 1, 4)
+                .contiguous()
+            )
+
+            self.cache_v[:bsz, :, start_pos : start_pos + seqlen, :] = values_store
+            self.cache_k[:bsz, :, :, start_pos : start_pos + seqlen, :] = keys_store
+
+            if chunk_prefilling:
+                keys = self.cache_k[:, :, :, 0 : start_pos + seqlen, :]
+                keys = (
+                    keys.permute(0, 3, 1, 2, 4)
+                    .reshape(
+                        bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim
+                    )
+                    .contiguous()
+                )
+                values = self.cache_v[:, :, 0 : start_pos + seqlen, :]
+                values = (
+                    values.transpose(2, 1)
+                    .reshape(
+                        bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim
+                    )
+                    .contiguous()
+                )
+            else:
+                keys = xk
+                values = xv
+
+            keys = torch.repeat_interleave(
+                keys, dim=2, repeats=self.num_key_value_groups
+            )
+            values = torch.repeat_interleave(
+                values, dim=2, repeats=self.num_key_value_groups
+            )
+            output = flash_attn_func(
+                q=xq,
+                k=keys,
+                v=values,
+                causal=True,
+            )
+            output = output.contiguous().view(bsz, seqlen, -1)
+        else:
+            xq = xq.view(bsz, self.n_local_heads, self.head_dim)
+            xk = xk.view(bsz, self.num_key_value_heads, self.head_dim)
+            xv = xv.view(bsz, self.num_key_value_heads, self.head_dim)
+
+            output = awq_inference_engine.single_query_attention(
+                xq,
+                xk,
+                xv,
+                self.cache_k,
+                self.cache_v,
+                None,
+                None,
+                start_pos,
+                self.head_dim,
+                self.rope_theta,
+                self.rope_scaling,
+                True,
+            )
+            output = output.reshape(bsz, 1, -1)
+
+        return self.o_proj(output)
+
+
+def make_quant_attn(model, dev, flash_attn=0):
     """
     Replace all LlamaAttention modules with QuantLlamaAttention modules, fusing the q, k, v projections.
     """
@@ -353,14 +528,25 @@ def make_quant_attn(model, dev):
                 m.hidden_size, m.num_heads, qkv_layer, m.o_proj, dev
             )
         else:
-            attn = QuantLlamaAttentionFused(
-                m.args.hidden_size,
-                m.args.num_attention_heads,
-                qkv_layer,
-                m.o_proj,
-                dev,
-                m.args,
-            )
+            if flash_attn:
+                attn = QuantLlamaAttentionFusedFlash(
+                    m.args.hidden_size,
+                    m.args.num_attention_heads,
+                    qkv_layer,
+                    m.o_proj,
+                    dev,
+                    m.args,
+                )
+            else:
+                attn = QuantLlamaAttentionFused(
+                    m.args.hidden_size,
+                    m.args.num_attention_heads,
+                    qkv_layer,
+                    m.o_proj,
+                    dev,
+                    m.args,
+                )
+
         if "." in name:
             parent_name = name.rsplit(".", 1)[0]
             child_name = name[len(parent_name) + 1 :]
