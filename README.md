@@ -7,7 +7,7 @@
 
 The current release supports: 
 
-- \[Beta\] Chunk prefilling for faster prefilling in multi-round Q&A setting. [Stable version](https://github.com/mit-han-lab/llm-awq/tree/stable_version_20241009).
+- \[Beta\] Chunk prefilling for faster prefilling in multi-round Q&A setting. [Stable branch](https://github.com/mit-han-lab/llm-awq/tree/stable_version_20241009).
 - AWQ search for accurate quantization. 
 - Pre-computed AWQ model zoo for LLMs (Llama-1/2/3, OPT, CodeLlama, StarCoder, Vicuna, VILA, LLaVA; load to generate quantized weights).
 - Memory-efficient 4-bit Linear in PyTorch.
@@ -40,7 +40,7 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
 
 
 ## News
-- [2024/10] 🔥 \[Beta\] We supported **Chunk Prefilling** in TinyChat, leading to an order of magnitude faster prefilling in multi-round Q&A (over 1k history tokens). Details are [here](https://github.com/mit-han-lab/llm-awq/tree/main/tinychat#new-optimization-of-context-stage). The original stable version is [here](https://github.com/mit-han-lab/llm-awq/tree/stable_version_20241009).
+- [2024/10] 🔥 \[Beta\] We supported **Chunk Prefilling** in TinyChat, leading to an order of magnitude faster prefilling in multi-round Q&A (over 1k history tokens). Details are [here](https://github.com/mit-han-lab/llm-awq/tree/main/tinychat#new-optimization-of-context-stage). The original stable branch is [here](https://github.com/mit-han-lab/llm-awq/tree/stable_version_20241009).
 - [2024/05] 🏆 AWQ receives the **Best Paper Award** at **MLSys 2024**. 🎉 
 - [2024/05] 🔥 The **VILA-1.5** model family which features **video understanding** is now supported in AWQ and TinyChat. Check out out online demo powered by TinyChat [here](https://vila.hanlab.ai). Example is [here](scripts/vila15_example.sh).
 - [2024/05] 🔥 [AMD](https://community.amd.com/t5/ai/reduce-memory-footprint-and-improve-performance-running-llms-on/ba-p/686157) adopts AWQ to improve LLM serving efficiency.
