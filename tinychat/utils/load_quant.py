@@ -89,6 +89,7 @@ def load_awq_model(model, checkpoint, w_bit, group_size, device):
                     "MPTBlock",
                     "DecoderLayer",
                     "CLIPEncoderLayer",
+                    "Phi3DecoderLayer"
                 ],
             ).to(device)
     return model

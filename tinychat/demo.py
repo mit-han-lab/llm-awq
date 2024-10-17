@@ -10,10 +10,11 @@ import tinychat.utils.constants
 from tinychat.utils.load_quant import load_awq_model, load_awq_llama_fast
 from tinychat.utils.prompt_templates import get_prompter, get_stop_token_ids
 from tinychat.utils.tune import device_warmup, tune_all_wqlinears
+from transformers import Phi3ForCausalLM
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # opt_params in TinyLLMEngine
 gen_params = AttributeDict(
@@ -138,6 +139,7 @@ if __name__ == "__main__":
         "llama",
         "falcon",
         "mpt",
+        "phi3"
     ], "We only support llama & falcon & mpt now"
     assert args.precision in ["W4A16", "W16A16"], "We only support W4A16/W16A16 now"
 
@@ -181,6 +183,7 @@ if __name__ == "__main__":
         "llama": LlamaForCausalLM,
         "falcon": FalconForCausalLM,
         "mpt": MPTForCausalLM,
+        "phi3": Phi3ForCausalLM
     }
 
     if args.precision == "W4A16":
@@ -222,6 +225,12 @@ if __name__ == "__main__":
         else:
             print("Disabling flash-attention!")
             make_quant_attn(model, args.device)
+        make_quant_norm(model)
+    
+    if args.precision == "W4A16" and args.model_type.lower() == "phi3":
+        from tinychat.modules import make_quant_norm, make_quant_attn
+
+        make_quant_attn(model, args.device)
         make_quant_norm(model)
 
     if args.max_seq_len <= 1024:
