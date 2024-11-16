@@ -85,7 +85,7 @@ class LlamaAttentionFused(nn.Module):
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = args.max_position_embeddings
         self.rope_theta = args.rope_theta
-        self.rope_scaling = args.rope_scaling
+        self.rope_scaling = getattr(args, 'rope_scaling', None)
         if self.rope_scaling is None:
             self.rope_scaling = 1.0
         else:
@@ -304,7 +304,7 @@ class Transformer(nn.Module):
         self.norm = RMSNorm(params.hidden_size, eps=params.rms_norm_eps)
 
         # Note (Haotian): rope_theta has to be defined here, otherwise context stage is wrong.
-        rope_scale = self.params.rope_scaling
+        rope_scale = getattr(self.params, 'rope_scaling', None)
         if rope_scale is None:
             rope_scale = 1.0
         else:
