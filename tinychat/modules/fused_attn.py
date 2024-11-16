@@ -354,29 +354,26 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
             torch.zeros(
                 (
                     max_batch_size,
-                    self.num_key_value_heads,
-                    # args.max_position_embeddings,
                     kv_max_seq_len,
+                    self.num_key_value_heads,
                     self.head_dim,
-                )
+                ),
+                device=dev,
+                dtype=torch.float16,
             )
-            .to(dev)
-            .half()
         )  # added to half
         # 8: pack 8 fp16 in FT, if fp32 then use 4
         self.cache_k = (
             torch.zeros(
                 (
                     max_batch_size,
-                    self.num_key_value_heads,
-                    self.head_dim // 8,
-                    # args.max_position_embeddings,
                     kv_max_seq_len,
-                    8,
-                )
+                    self.num_key_value_heads,
+                    self.head_dim,
+                ),
+                device=dev,
+                dtype=torch.float16,
             )
-            .to(dev)
-            .half()
         )  # added to half
 
         # dummy
@@ -400,82 +397,49 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
             self.n_local_heads + self.num_key_value_heads * 2,
             self.head_dim,
         )
-        xq = xqkv[:, :, 0 : self.n_local_heads]
+        xq = xqkv[:, :, 0 : self.n_local_heads].contiguous()
         xk = xqkv[
             :, :, self.n_local_heads : (self.n_local_heads + self.num_key_value_heads)
-        ]
-        xv = xqkv[:, :, -self.num_key_value_heads :]
+        ].contiguous()
+        xv = xqkv[:, :, -self.num_key_value_heads :].contiguous()
 
         if seqlen > 1:
             xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
-            self.cache_k = self.cache_k.to(xq)
-            self.cache_v = self.cache_v.to(xq)
+            self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
+            self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
 
-            values_store = xv.transpose(2, 1)
-            keys_store = (
-                xk.reshape(bsz, seqlen, self.num_key_value_heads, self.head_dim // 8, 8)
-                .permute(0, 2, 3, 1, 4)
-                .contiguous()
-            )
+            # if chunk_prefilling:
+            keys = self.cache_k[:bsz:, 0 : start_pos + seqlen]
+            values = self.cache_v[:bsz:, 0 : start_pos + seqlen]
 
-            self.cache_v[:bsz, :, start_pos : start_pos + seqlen, :] = values_store
-            self.cache_k[:bsz, :, :, start_pos : start_pos + seqlen, :] = keys_store
+            # else:
+            #     keys = xk
+            #     values = xv
 
-            if chunk_prefilling:
-                keys = self.cache_k[:, :, :, 0 : start_pos + seqlen, :]
-                keys = (
-                    keys.permute(0, 3, 1, 2, 4)
-                    .reshape(
-                        bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim
-                    )
-                    .contiguous()
-                )
-                values = self.cache_v[:, :, 0 : start_pos + seqlen, :]
-                values = (
-                    values.transpose(2, 1)
-                    .reshape(
-                        bsz, start_pos + seqlen, self.num_key_value_heads, self.head_dim
-                    )
-                    .contiguous()
-                )
-            else:
-                keys = xk
-                values = xv
-
-            keys = torch.repeat_interleave(
-                keys, dim=2, repeats=self.num_key_value_groups
-            )
-            values = torch.repeat_interleave(
-                values, dim=2, repeats=self.num_key_value_groups
-            )
             output = flash_attn_func(
                 q=xq,
                 k=keys,
                 v=values,
                 causal=True,
             )
-            output = output.contiguous().view(bsz, seqlen, -1)
+            output = output.view(bsz, seqlen, -1)
         else:
-            xq = xq.view(bsz, self.n_local_heads, self.head_dim)
-            xk = xk.view(bsz, self.num_key_value_heads, self.head_dim)
-            xv = xv.view(bsz, self.num_key_value_heads, self.head_dim)
+            xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
-            output = awq_inference_engine.single_query_attention(
-                xq,
-                xk,
-                xv,
-                self.cache_k,
-                self.cache_v,
-                None,
-                None,
-                start_pos,
-                self.head_dim,
-                self.rope_theta,
-                self.rope_scaling,
-                True,
+            self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
+            self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
+
+            keys = self.cache_k[:bsz, 0 : start_pos + seqlen]
+            values = self.cache_v[:bsz, 0 : start_pos + seqlen]
+        
+            output = flash_attn_func(
+                q=xq,
+                k=keys,
+                v=values,
+                causal=True,
             )
-            output = output.reshape(bsz, 1, -1)
+            output = output.view(bsz, seqlen, -1)
 
         return self.o_proj(output)
 
