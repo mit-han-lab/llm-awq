@@ -71,11 +71,9 @@ def stream_output(output_stream):
         print("=" * 50)
         print("Speed of Inference")
         print("-" * 50)
+        print(f"TTFT : { context_time:.3f} s for {context_tokens} tokens")
         print(
-            f"Context Stage : { context_time/context_tokens* 1000:.2f} ms/token (total time: { context_time:.3f} s)"
-        )
-        print(
-            f"Generation Stage : {np.average(generation_time_list) * 1000:.2f} ms/token"
+            f"Speed of Generation : {np.average(generation_time_list)*1000:.2f} ms/token"
         )
         print("=" * 50)
     return " ".join(output_text), total_tokens
@@ -89,18 +87,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_path",
         type=str,
-        default="/data/llm/checkpoints/vicuna-hf/vicuna-7b",
         help="path to the model",
     )
     parser.add_argument(
         "--precision", type=str, default="W4A16", help="compute precision"
     )
-    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--q_group_size", type=int, default=128)
     parser.add_argument(
         "--load_quant",
         type=str,
-        default="/data/llm/checkpoints/vicuna-hf/vicuna-7b-awq-w4g128.pt",
         help="path to the pre-quanted 4-bit weights",
     )
     parser.add_argument(
@@ -141,7 +137,7 @@ if __name__ == "__main__":
     ], "We only support llama & falcon & mpt now"
     assert args.precision in ["W4A16", "W16A16"], "We only support W4A16/W16A16 now"
 
-    gen_params.n_predict = 512
+    gen_params.n_predict = 1024
     gen_params.n_vocab = 32000
     tinychat.utils.constants.max_batch_size = args.max_batch_size
     tinychat.utils.constants.max_seq_len = args.max_seq_len
@@ -203,9 +199,9 @@ if __name__ == "__main__":
         )
         model = model_type_dict[args.model_type.lower()](config).half().to(args.device)
         model.load_state_dict(loaded_model.state_dict())
-
     # device warm up
     device_warmup(args.device)
+
     # autotune split_k_iters
     # tune_all_wqlinears(model)
 
@@ -217,13 +213,15 @@ if __name__ == "__main__":
         from tinychat.modules import make_quant_norm, make_quant_attn
 
         if args.flash_attn:
-            print("Enabling flash-attention!")
             make_quant_attn(model, args.device, args.flash_attn)
         else:
-            print("Disabling flash-attention!")
             make_quant_attn(model, args.device)
         make_quant_norm(model)
-
+    model(
+        torch.randint(0, 1000, (1, 4096), dtype=torch.int, device="cuda:0"),
+        0,
+        quant=args.precision == "W4A16",
+    )
     if args.max_seq_len <= 1024:
         short_prompt = True
     else:
@@ -232,6 +230,7 @@ if __name__ == "__main__":
     stop_token_ids = get_stop_token_ids(args.model_type, args.model_path)
     count = 0
     start_pos = 0
+    print("=" * 50)
     while True:
         # Get input from the user
         input_prompt = input("USER: ")
@@ -248,6 +247,7 @@ if __name__ == "__main__":
             device=args.device,
             stop_token_ids=stop_token_ids,
             chunk_prefilling=args.chunk_prefilling,
+            quant_llm=args.precision == "W4A16",
         )
         outputs, total_tokens = stream_output(output_stream)
         if args.chunk_prefilling:
@@ -259,3 +259,4 @@ if __name__ == "__main__":
         ):  # Only memorize previous conversations when kv_cache_size > 512
             model_prompter.update_template(outputs, args.chunk_prefilling)
         count += 1
+        break

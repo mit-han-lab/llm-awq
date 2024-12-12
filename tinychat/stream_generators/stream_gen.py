@@ -44,13 +44,14 @@ def StreamGenerator(
     echo: bool = False,
     stop_token_ids=[],
     chunk_prefilling=False,
+    quant_llm=False,
 ):
     if chunk_prefilling and start_pos != 0:
         input_ids = tokenizer(input).input_ids[
             1:
         ]  # tokenizer will add a <s> at the beginning, so to delete it (important for chunk_prefilling)
     else:
-        input_ids = tokenizer(input).input_ids
+        input_ids = tokenizer(input)["input_ids"]
     input_echo_len = len(input_ids)
     output_ids = list(input_ids)
     len_input = len(input)
@@ -79,9 +80,11 @@ def StreamGenerator(
             "llama" not in model.__class__.__name__.lower()
             and "mpt" not in model.__class__.__name__.lower()
             and "falcon" not in model.__class__.__name__.lower()
+            and "qwen" not in model.__class__.__name__.lower()
         ):
             if i == 0:  # Context Stage
-                out = model(inputs, use_cache=True)
+                # out = model(inputs, use_cache=True)
+                out = model(inputs)
                 logits = out.logits
                 past_key_values = out.past_key_values
             else:
@@ -93,7 +96,17 @@ def StreamGenerator(
                 logits = out.logits
                 past_key_values = out.past_key_values
         else:
-            out = model(inputs, start_pos=start_pos, chunk_prefilling=chunk_prefilling)
+            if "llama" in model.__class__.__name__.lower() and not quant_llm:
+                out = model(
+                    inputs,
+                    start_pos=start_pos,
+                    chunk_prefilling=chunk_prefilling,
+                    quant=quant_llm,
+                )
+            else:
+                out = model(
+                    inputs, start_pos=start_pos, chunk_prefilling=chunk_prefilling
+                )
             start_pos += inputs.shape[1]
             logits = out
         torch.cuda.synchronize()

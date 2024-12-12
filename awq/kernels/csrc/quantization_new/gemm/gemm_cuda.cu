@@ -118,13 +118,13 @@ __inline__ __device__ void cp_async_cg_A(uint32_t smem_int_ptr, const uint4 *__r
                "n"(cp_size));
 }
 
-__device__ __inline__ void mma_m16n8k16(float *C_warp, half *A_shared_warp, half *B_shared_warp)
+__device__ __inline__ void mma_m16n8k16(half *C_warp, half *A_shared_warp, half *B_shared_warp)
 {
   __asm__ __volatile__(
-      "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32"
-      "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%10, %11, %12, %13};"
-      : "=f"(((float *)C_warp)[0]), "=f"(((float *)C_warp)[1]), "=f"(((float *)C_warp)[2]), "=f"(((float *)C_warp)[3])
-      : "r"(((unsigned *)A_shared_warp)[0]), "r"(((unsigned *)A_shared_warp)[1]), "r"(((unsigned *)A_shared_warp)[2]), "r"(((unsigned *)A_shared_warp)[3]), "r"(((unsigned *)B_shared_warp)[0]), "r"(((unsigned *)B_shared_warp)[1]), "f"(((float *)C_warp)[0]), "f"(((float *)C_warp)[1]), "f"(((float *)C_warp)[2]), "f"(((float *)C_warp)[3]));
+      "mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16"
+      "{%0, %1}, {%2, %3, %4, %5}, {%6, %7}, {%8, %9};"
+      : "=r"(((unsigned *)C_warp)[0]), "=r"(((unsigned *)C_warp)[1])
+      : "r"(((unsigned *)A_shared_warp)[0]), "r"(((unsigned *)A_shared_warp)[1]), "r"(((unsigned *)A_shared_warp)[2]), "r"(((unsigned *)A_shared_warp)[3]), "r"(((unsigned *)B_shared_warp)[0]), "r"(((unsigned *)B_shared_warp)[1]), "r"(((unsigned *)C_warp)[0]), "r"(((unsigned *)C_warp)[1]));
 }
 
 template <int CTA_M, int CTA_N, int CTA_K, int CTA_SIZE, int SHARED_K_ITERS, int STAGES>
@@ -307,7 +307,7 @@ __global__ void gemm_w4a16_T1(half *__restrict__ A, half *__restrict__ B, half *
   blockIdx_m = block_idx_mapping.x;
   blockIdx_n = block_idx_mapping.y;
 
-  float C_warp[CTA_M * CTA_N / CTA_SIZE_MN];
+  half C_warp[CTA_M * CTA_N / CTA_SIZE_MN];
   constexpr int kSmemPadKA = CTA_K + SMEM_PAD_A;
   constexpr int kSmemPadKB = CTA_K + SMEM_PAD_B;
   constexpr int kSmemSizeAPerStage = CTA_M * kSmemPadKA;
@@ -323,7 +323,7 @@ __global__ void gemm_w4a16_T1(half *__restrict__ A, half *__restrict__ B, half *
   half *B_shared = mem_shared + kSmemSizeA;
   half *scales_shared = mem_shared + kSmemSizeA + kSmemSizeB;
   half *zeros_shared = mem_shared + kSmemSizeA + kSmemSizeB + kSmemSizeScales;
-  float *C_shared = reinterpret_cast<float *>(mem_shared);
+  half *C_shared = reinterpret_cast<half *>(mem_shared);
   half A_shared_warp_[2][WARP_M * INTRIN_K /
                          WARP_SIZE];
   half B_shared_warp_[2][WARP_N * 32 /
@@ -537,8 +537,8 @@ __global__ void gemm_w4a16_T1(half *__restrict__ A, half *__restrict__ B, half *
                   (local_id / 4) * 8 + (local_id % 2) + (threadIdx.x % 4) * 2);
 
               *existing_psum_ptr = __hadd2(*existing_psum_ptr,
-                                           __float22half2_rn(*reinterpret_cast<float2 *>(C_warp + ax0_0_1 * WARP_N / INTRIN_N * 8 +
-                                                                                         ax1_0_1 * 8 + local_id)));
+                                           *reinterpret_cast<half2 *>(C_warp + ax0_0_1 * WARP_N / INTRIN_N * 8 +
+                                                                                         ax1_0_1 * 8 + local_id));
             }
           };
         }
@@ -559,8 +559,8 @@ __global__ void gemm_w4a16_T1(half *__restrict__ A, half *__restrict__ B, half *
                   C + write_row * N +
                   cta_offset_n + warp_offset_n + ax1_0_1 * 16 +
                   (local_id / 4) * 8 + (local_id % 2) + (threadIdx.x % 4) * 2) =
-                  __float22half2_rn(*reinterpret_cast<float2 *>(C_warp + ax0_0_1 * WARP_N / INTRIN_N * 8 +
-                                                                ax1_0_1 * 8 + local_id));
+                  *reinterpret_cast<half2 *>(C_warp + ax0_0_1 * WARP_N / INTRIN_N * 8 +
+                                                                ax1_0_1 * 8 + local_id);
             }
           };
         }
@@ -760,7 +760,7 @@ __global__ void gemm_w4a16_T2(half *__restrict__ A, half *__restrict__ B, half *
   blockIdx_m = block_idx_mapping.x;
   blockIdx_n = block_idx_mapping.y;
 
-  float C_warp[CTA_M * CTA_N / CTA_SIZE];
+  half C_warp[CTA_M * CTA_N / CTA_SIZE];
   constexpr int kSmemPadKA = CTA_K + SMEM_PAD_A;
   constexpr int kSmemPadKB = CTA_K + SMEM_PAD_B;
   constexpr int kSmemSizeAPerStage = CTA_M * kSmemPadKA;
@@ -918,7 +918,7 @@ __global__ void gemm_w4a16_T2(half *__restrict__ A, half *__restrict__ B, half *
               C + write_row * N +
               cta_offset_n + warp_offset_n + ax1_0_1 * 16 +
               (local_id / 4) * 8 + (local_id % 2) + (threadIdx.x % 4) * 2) =
-              __float22half2_rn(*reinterpret_cast<float2 *>(C_warp + ax0_0_1 * WARP_N / INTRIN_N * 8 +
+              (*reinterpret_cast<half2 *>(C_warp + ax0_0_1 * WARP_N / INTRIN_N * 8 +
                                                             ax1_0_1 * 8 + local_id));
         }
       };

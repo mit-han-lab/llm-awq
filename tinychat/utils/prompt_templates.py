@@ -33,8 +33,8 @@ class BasePrompter:
         role2,
         sen_spliter="\n",
         qa_spliter="\n",
-        colon=":",
         decorator: List[str] = None,
+        colon=":",
     ):
         self.system_inst = system_inst  # System Instruction
         self.role1 = role1  # The name of USER
@@ -62,6 +62,7 @@ class BasePrompter:
                 + self.colon
             )
         else:
+
             self.template = (
                 self.starter
                 + self.system_inst
@@ -86,12 +87,13 @@ class BasePrompter:
         if chunk_prefilling:
             self.template = (
                 self.role1
-                + ": {prompt}"
+                + self.colon
+                + "{prompt}"
                 + self.stopper
                 + self.sen_spliter  # blank space
                 + self.starter
                 + self.role2
-                + ":"
+                + self.colon
             )
         else:
             self.template = (
@@ -102,12 +104,13 @@ class BasePrompter:
                 + self.qa_spliter
                 + self.starter
                 + self.role1
-                + ": {prompt}"
+                + self.colon
+                + "{prompt}"
                 + self.stopper
                 + self.sen_spliter
                 + self.starter
                 + self.role2
-                + ":"
+                + self.colon
             )
         self.model_input = None
 
@@ -299,6 +302,19 @@ class MPTChatPrompter(BasePrompter):
         super().__init__(system_inst, role1, role2, sen_spliter, qa_spliter, decorator)
 
 
+class NVILAPrompter(BasePrompter):
+    def __init__(self):
+        system_inst = "system\n" + "You are a helpful assistant<|im_end|>\n"
+        role1 = "user"
+        role2 = "assistant"
+        sen_spliter = "\n"
+        qa_spliter = "\n"
+        decorator = ["<|im_start|>", "<|im_end|>"]
+        super().__init__(
+            system_inst, role1, role2, sen_spliter, qa_spliter, decorator, "\n"
+        )
+
+
 def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=False):
     if empty_prompt:
         return EmptyPrompter()
@@ -325,6 +341,8 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
             return MPTChatPrompter()
         else:
             return MPTPrompter()
+    elif model_type.lower() == "nvila":
+        return NVILAPrompter()
     else:
         raise ValueError(f"model type {model_type} is not supported")
 
@@ -344,5 +362,7 @@ def get_stop_token_ids(model_type, model_path=""):
             return [50278, 0]
         else:
             return []
+    elif model_type.lower() == "nvila":
+        return [151645]
     else:
         raise ValueError(f"model type {model_type} is not supported")
