@@ -59,23 +59,9 @@ class TimeStats:
 
         print("*" * 50)
         print(
-            f"Speed of Generation : {np.average(self.generation_time_list) * 1000:.2f} ms/token"
+            f"Speed of Generation : {np.average(self.generation_time_list)*1000:.3f} ms/token"
         )
         print("*" * 50)
-
-        # print("=" * 50)
-        # print("Speed of Inference")
-        # print("-" * 50)
-        # print(f"Context Stage Time   : {context_time * 1000:.2f} ms")
-        # print(f"Context Stage Tokens : {context_tokens} tokens")
-        # print(f"Context Stage    : {context_time/context_tokens * 1000:.2f} ms/token")
-        # print(
-        #     f"Generation Stage : {np.average(self.generation_time_list) * 1000:.2f} ms/token"
-        # )
-        # print(f"Average Speed    : {average_speed * 1000:.2f} ms/token")
-        # print("=" * 50)
-        # print("token num:", total_tokens)
-        # print("Model total Time = ", (context_time + np.sum(generation_time_list))*1000, "ms" )
 
 
 def stream_output(output_stream, time_stats: TimeStats = None):
@@ -93,6 +79,7 @@ def stream_output(output_stream, time_stats: TimeStats = None):
         total_tokens = timing["total_tokens"]
         if time_stats is not None:
             time_stats.update(timing)
+        prompt_tokens = timing["context_tokens"]
     print("-" * 50)
-    print("TTFT: {:.3f} s.".format(timing["context_time"]))
+    print("TTFT: {:.3f} s for {} tokens.".format(timing["context_time"], prompt_tokens))
     return " ".join(output_text), total_tokens

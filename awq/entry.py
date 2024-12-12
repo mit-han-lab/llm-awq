@@ -53,7 +53,9 @@ parser.add_argument("--no_zero_point", action="store_true", help="disable zero_p
 parser.add_argument("--q_backend", type=str, default="fake", choices=["fake", "real"])
 # save/load real quantized weights
 parser.add_argument("--dump_quant", type=str, default=None, help="save quantized model")
-parser.add_argument("--dump_fake", type=str, default=None, help="save fake-quantized model")
+parser.add_argument(
+    "--dump_fake", type=str, default=None, help="save fake-quantized model"
+)
 parser.add_argument("--load_quant", type=str, default=None, help="load quantized model")
 # apply/save/load awq
 parser.add_argument("--run_awq", action="store_true", help="perform awq search process")
@@ -68,8 +70,37 @@ parser.add_argument(
     action="store_true",
     help="quantizing vila 1.5",
 )
+parser.add_argument(
+    "--vila-20",
+    action="store_true",
+    help="quantizing or smoothing vila 2.0 (NVILA)",
+)
+parser.add_argument(
+    "--smooth_scale",
+    action="store_true",
+    help="generate the act scale of visiontower",
+)
+parser.add_argument(
+    "--media_path",
+    type=str,
+    nargs="+",
+    help="The input video to get act scale for visiontower",
+)
+parser.add_argument(
+    "--act_scale_path",
+    type=str,
+    default=None,
+    help="Path to save act scale",
+)
 args = parser.parse_args()
-vila_10_quant_mode = ("llava" in args.model_path.lower() or "vila" in args.model_path.lower()) and not args.vila_15
+assert (
+    args.act_scale_path is not None and len(args.media_path) > 0
+) or not args.smooth_scale
+vila_10_quant_mode = (
+    ("llava" in args.model_path.lower() or "vila" in args.model_path.lower())
+    and not args.vila_15
+    and not args.vila_20
+)
 
 max_memory = [v.split(":") for v in (args.max_memory or [])]
 max_memory = {(int(k) if k.isdigit() else k): v for k, v in max_memory}
@@ -102,7 +133,7 @@ def build_model_and_enc(model_path):
             model_base=None,
             model_name=get_model_name_from_path(model_path),
             device="cpu",
-            **{"use_cache": False}
+            **{"use_cache": False},
         )
     else:
         config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
@@ -243,11 +274,24 @@ def main():
         print(f"Results {args.output_path} already generated. Overwrite.")
         # exit()
 
+    # a hack here to auto set model group
+    if args.smooth_scale and args.vila_20:
+        if os.path.exists(args.act_scale_path):
+            print(f"Found existing Smooth Scales {args.act_scale_path}, skip.")
+        else:
+            from awq.quantize import get_smooth_scale
+
+            act_scale = get_smooth_scale(args.model_path, args.media_path)
+            os.makedirs(os.path.dirname(args.act_scale_path), exist_ok=True)
+            torch.save(act_scale, args.act_scale_path)
+            print("Save act scales at " + str(args.act_scale_path))
+            args.model_path = args.model_path + "/llm"
+        if args.dump_awq is None and args.dump_quant is None:
+            exit()
+
     if args.dump_awq and os.path.exists(args.dump_awq):
         print(f"Found existing AWQ results {args.dump_awq}, exit.")
         exit()
-
-    # a hack here to auto set model group
     model, enc = build_model_and_enc(args.model_path)
 
     if args.tasks is not None:

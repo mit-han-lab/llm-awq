@@ -18,6 +18,7 @@ import tinychat.utils.constants
 max_batch_size = tinychat.utils.constants.max_batch_size
 multiple_of = tinychat.utils.constants.llama_multiple_of
 max_seq_len = tinychat.utils.constants.max_seq_len
+from flash_attn import flash_attn_func
 
 
 class RMSNorm(torch.nn.Module):
@@ -41,8 +42,19 @@ def precompute_freqs_cis(
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     t = torch.arange(end, device=freqs.device)  # type: ignore
     freqs = torch.outer(t * scale, freqs).float()  # type: ignore
+
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
     return freqs_cis
+
+
+def precompute_freqs(
+    dim: int, end: int, theta: float = 10000.0, scale: float = 1.0, device=None
+):
+    inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2).float().to(device) / dim))
+    seq = torch.arange(end, dtype=inv_freq.dtype, device=device)
+    freqs = torch.einsum("i , j -> i j", seq, inv_freq)
+    freqs = freqs.reshape(freqs.shape[0], 1, 1, -1)
+    return torch.cat((freqs, freqs), dim=-1)
 
 
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
@@ -91,8 +103,8 @@ class LlamaAttentionFused(nn.Module):
         else:
             self.rope_scaling = 1.0 / self.rope_scaling["factor"]
 
-        kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
-
+        # kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
+        kv_max_seq_len = 8192
         self.q_proj = nn.Linear(
             self.hidden_size,
             self.num_heads * self.head_dim,
@@ -143,7 +155,6 @@ class LlamaAttentionFused(nn.Module):
             .cuda()
             .half()
         )  # added to half
-
         # dummy
         self.rotary_emb = LlamaRotaryEmbedding(
             self.head_dim, max_position_embeddings=2048, device="cuda:0"
@@ -206,22 +217,13 @@ class LlamaAttentionFused(nn.Module):
             else:
                 keys = xk
                 values = xv
-            keys = torch.repeat_interleave(
-                keys, dim=2, repeats=self.num_key_value_groups
+            output = flash_attn_func(
+                q=xq,
+                k=keys,
+                v=values,
+                causal=True,
             )
-            values = torch.repeat_interleave(
-                values, dim=2, repeats=self.num_key_value_groups
-            )
-
-            xq = xq.transpose(1, 2)
-            keys = keys.transpose(1, 2)
-            values = values.transpose(1, 2)
-            scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-            if mask is not None:
-                scores = scores + mask  # (bs, n_local_heads, slen, cache_len + slen)
-            scores = F.softmax(scores.float(), dim=-1).type_as(xq)
-            output = torch.matmul(scores, values)  # (bs, n_local_heads, slen, head_dim)
-            output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
+            output = output.contiguous().view(bsz, seqlen, -1)
         else:
             xq = xq.view(bsz, self.n_local_heads, self.head_dim)
             xk = xk.view(bsz, self.num_key_value_heads, self.head_dim)
@@ -309,6 +311,12 @@ class Transformer(nn.Module):
             rope_scale = 1.0
         else:
             rope_scale = 1.0 / rope_scale["factor"]
+        self.freqs = precompute_freqs(
+            self.params.hidden_size // self.params.num_attention_heads,
+            self.params.max_position_embeddings * 2,
+            self.params.rope_theta,
+            rope_scale,
+        )
         self.freqs_cis = precompute_freqs_cis(
             self.params.hidden_size // self.params.num_attention_heads,
             self.params.max_position_embeddings * 2,
@@ -318,6 +326,38 @@ class Transformer(nn.Module):
 
     @torch.inference_mode()
     def forward(
+        self,
+        tokens: torch.Tensor,
+        start_pos: int,
+        inputs_embeds: torch.Tensor = None,
+        chunk_prefilling: bool = False,
+    ):
+        if tokens is not None:
+            _bsz, seqlen = tokens.shape
+            h = self.embed_tokens(tokens)
+        else:
+            h = inputs_embeds
+            seqlen = inputs_embeds.shape[1]
+        self.freqs = self.freqs.to(h.device)
+        freqs = self.freqs[start_pos : start_pos + seqlen]
+
+        mask = None
+        if seqlen > 1:
+            mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=h.device)
+            mask = torch.triu(mask, diagonal=1).type_as(h)
+            if chunk_prefilling:
+                mask_history = torch.zeros(
+                    (1, 1, seqlen, start_pos), dtype=torch.float16, device=h.device
+                ).type_as(h)
+                mask = torch.cat((mask_history, mask), dim=-1)
+        for layer in self.layers:
+            h = layer(h, start_pos, freqs, mask, chunk_prefilling)
+        h = h[:, -1:, :]  # Only the last token is useful
+        h = self.norm(h)
+        return h
+
+    @torch.inference_mode()
+    def forwardfp16(
         self,
         tokens: torch.Tensor,
         start_pos: int,
@@ -363,7 +403,13 @@ class LlamaForCausalLM(nn.Module):
         start_pos: int,
         inputs_embeds: torch.Tensor = None,
         chunk_prefilling=False,
+        quant=True,
     ):
-        h = self.model(tokens, start_pos, inputs_embeds, chunk_prefilling)
+        if quant:
+            h = self.model(tokens, start_pos, inputs_embeds, chunk_prefilling)
+        else:
+            h = self.model.forwardfp16(
+                tokens, start_pos, inputs_embeds, chunk_prefilling
+            )
         output = self.lm_head(h)  # only compute last logits
         return output.float()

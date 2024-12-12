@@ -15,6 +15,8 @@ import gc
 
 import tinychat.utils.constants
 from flash_attn import flash_attn_func
+from tinychat.models.llama import LlamaAttentionFused
+from tinychat.models.qwen2 import Qwen2AttentionFused
 
 max_batch_size = tinychat.utils.constants.max_batch_size
 max_seq_len = tinychat.utils.constants.max_seq_len
@@ -217,18 +219,13 @@ class QuantLlamaAttentionFused(nn.Module):
             .half()
         )  # added to half
 
-        # dummy
-        self.rotary_emb = QuantLlamaRotaryEmbedding(
-            self.head_dim, max_position_embeddings=2048, device="cuda:0"
-        )
-
     def forward(
         self,
         x: torch.Tensor,
         start_pos: int,
-        freqs_cis: torch.Tensor,
+        freqs: torch.Tensor,
         mask: Optional[torch.Tensor],
-        chunk_prefilling: bool,
+        chunk_prefilling: bool = False,
     ):
         bsz, seqlen, _ = x.shape
         xqkv = self.qkv_proj(x)
@@ -249,7 +246,8 @@ class QuantLlamaAttentionFused(nn.Module):
             xk = xk.view(bsz, seqlen, self.num_key_value_heads, self.head_dim)
             xv = xv.view(bsz, seqlen, self.num_key_value_heads, self.head_dim)
 
-            xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
+            xq = awq_inference_engine.fused_rope_with_pos_forward_func(xq, freqs, True)
+            xk = awq_inference_engine.fused_rope_with_pos_forward_func(xk, freqs, True)
 
             self.cache_k = self.cache_k.to(xq)
             self.cache_v = self.cache_v.to(xq)
@@ -347,8 +345,8 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
 
-        kv_max_seq_len = min(max_seq_len, args.max_position_embeddings)
-
+        # kv_max_seq_len = min(max_seq_len, args.max_position_embeddings)
+        kv_max_seq_len = 8192
         # following fastertransformer definition
         self.cache_v = (
             torch.zeros(
@@ -379,18 +377,13 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
             .half()
         )  # added to half
 
-        # dummy
-        self.rotary_emb = QuantLlamaRotaryEmbedding(
-            self.head_dim, max_position_embeddings=2048, device="cuda:0"
-        )
-
     def forward(
         self,
         x: torch.Tensor,
         start_pos: int,
-        freqs_cis: torch.Tensor,
+        freqs: torch.Tensor,
         mask: Optional[torch.Tensor],
-        chunk_prefilling: bool,
+        chunk_prefilling: bool = False,
     ):
         bsz, seqlen, _ = x.shape
         xqkv = self.qkv_proj(x)
@@ -407,7 +400,8 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
         xv = xqkv[:, :, -self.num_key_value_heads :]
 
         if seqlen > 1:
-            xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
+            xq = awq_inference_engine.fused_rope_with_pos_forward_func(xq, freqs, True)
+            xk = awq_inference_engine.fused_rope_with_pos_forward_func(xk, freqs, True)
 
             self.cache_k = self.cache_k.to(xq)
             self.cache_v = self.cache_v.to(xq)
@@ -443,12 +437,6 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
                 keys = xk
                 values = xv
 
-            keys = torch.repeat_interleave(
-                keys, dim=2, repeats=self.num_key_value_groups
-            )
-            values = torch.repeat_interleave(
-                values, dim=2, repeats=self.num_key_value_groups
-            )
             output = flash_attn_func(
                 q=xq,
                 k=keys,
@@ -476,7 +464,6 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
                 True,
             )
             output = output.reshape(bsz, 1, -1)
-
         return self.o_proj(output)
 
 
@@ -486,7 +473,11 @@ def make_quant_attn(model, dev, flash_attn=0):
     """
     model = model.cpu()
     for name, m in model.named_modules():
-        if not m.__class__.__name__ in ["LlamaAttention", "LlamaAttentionFused"]:
+        if not m.__class__.__name__ in [
+            "LlamaAttention",
+            "LlamaAttentionFused",
+            "Qwen2AttentionFused",
+        ]:
             continue
 
         q_proj = m.q_proj
@@ -546,7 +537,6 @@ def make_quant_attn(model, dev, flash_attn=0):
                     dev,
                     m.args,
                 )
-
         if "." in name:
             parent_name = name.rsplit(".", 1)[0]
             child_name = name[len(parent_name) + 1 :]

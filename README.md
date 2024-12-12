@@ -7,40 +7,52 @@
 
 The current release supports: 
 
-- \[Beta\] Chunk prefilling for faster prefilling in multi-round Q&A setting. [Stable branch](https://github.com/mit-han-lab/llm-awq/tree/stable_version_20241009).
 - AWQ search for accurate quantization. 
 - Pre-computed AWQ model zoo for LLMs (Llama-1/2/3, OPT, CodeLlama, StarCoder, Vicuna, VILA, LLaVA; load to generate quantized weights).
 - Memory-efficient 4-bit Linear in PyTorch.
 - Efficient CUDA kernel implementation for fast inference (support context and decoding stage).
 - Examples on 4-bit inference of an instruction-tuned model (Vicuna) and **multi-modal LM** (VILA).
+- Chunk prefilling for faster prefilling in multi-round Q&A setting.
+- State-of-the-art prefilling speed of LLMs/VLMs on edge devices: [TinyChat 2.0](./tinychat).
 
 **Thanks to AWQ, TinyChat can deliver more efficient responses with LLM/VLM chatbots through 4-bit inference.**
 
-* TinyChat on RTX 4090 (3.4x faster than FP16):
+* TinyChat with LLaMA-3-8b on RTX 4090 (2.7x faster than FP16):
 
-![TinyChat on RTX 4090: W4A16 is 3.4x faster than FP16](./tinychat/figures/4090_example.gif)
+![TinyChat with LLaMA-3-8b on RTX 4090: W4A16 is 2.7x faster than FP16](./tinychat/figures/4090_example_new.gif)
 
-* TinyChat on Jetson Orin (3.2x faster than FP16):
-  
-![TinyChat on Orin: W4A16 is 3.2x faster than FP16](./tinychat/figures/orin_example.gif)
+* TinyChat with LLaMA-3-8b on Jetson Orin (2.9x faster than FP16):
+
+![TinyChat with LLaMA-3-8b on Jetson Orin: W4A16 is 2.9x faster than FP16](./tinychat/figures/orin_example_new.gif)
+
 
 **TinyChat also supports inference with vision language models (e.g., VILA, LLaVA). In the following examples, W4A16 quantized models from VILA family are launched with TinyChat.**
 
-* TinyChat with VILA-13B on RTX 4090 (multi-image inputs supported):
+* TinyChat with NVILA-8B on RTX 4090 (single-image inputs):
 
-![TinyChat with VILA on 4090](./tinychat/figures/4090_vila_example.gif)
+![TinyChat with NVILA on 4090 single image](./tinychat/figures/4090_nvila_single.gif)
 
-* TinyChat with VILA-7B/13B on Jetson Orin:
+* TinyChat with NVILA-8B on RTX 4090 (multi-image inputs):
 
-![TinyChat with VILA on Orin](./tinychat/figures/orin_vila_example.gif)
+![TinyChat with NVILA on 4090 multiple images](./tinychat/figures/4090_nvila_multi.gif)
 
 <!-- Check out [TinyChat](tinychat), which delievers **30 tokens/second** inference performance (**3.2x faster** than FP16) for the **Llama2** chatbot on the resource-constrained NVIDIA Jetson Orin!  -->
+
+* TinyChat with video reasoning:
+
+https://github.com/user-attachments/assets/b68a7a0d-5175-4030-985b-5ae0ae94f874
+
+**Prompt:** What might be the next step according to the video?
+
+**Answer:** The next step in the video could be to place the shaped dough onto a baking sheet and let it rise before baking.
+
+**Online demo:** https://vila.mit.edu
 
 Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device inference** of LLMs and VLMs on **resource-constrained edge platforms**. With TinyChat, it is now possible to efficiently run **large** models on **small** and **low-power** devices even without Internet connection!
 
 
 ## News
-- [2024/10] 🔥 \[Beta\] We supported **Chunk Prefilling** in TinyChat, leading to an order of magnitude faster prefilling in multi-round Q&A (over 1k history tokens). Details are [here](https://github.com/mit-han-lab/llm-awq/tree/main/tinychat#new-optimization-of-context-stage). The original stable branch is [here](https://github.com/mit-han-lab/llm-awq/tree/stable_version_20241009).
+- [2024/10] 🔥⚡ Explore advancements in [TinyChat 2.0](./tinychat), the latest version with significant advancements in prefilling speed of Edge LLMs and VLMs, **1.5-1.7x** faster than the previous version of TinyChat. Please refer to the [README](./tinychat/README.md) and [blog](hanlab.mit.edu/blog/tinychat20) for more details. 
 - [2024/05] 🏆 AWQ receives the **Best Paper Award** at **MLSys 2024**. 🎉 
 - [2024/05] 🔥 The **VILA-1.5** model family which features **video understanding** is now supported in AWQ and TinyChat. Check out out online demo powered by TinyChat [here](https://vila.hanlab.ai). Example is [here](scripts/vila15_example.sh).
 - [2024/05] 🔥 [AMD](https://community.amd.com/t5/ai/reduce-memory-footprint-and-improve-performance-running-llms-on/ba-p/686157) adopts AWQ to improve LLM serving efficiency.
@@ -65,12 +77,12 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
 - [AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration](#awq-activation-aware-weight-quantization-for-llm-compression-and-acceleration)
   - [News](#news)
   - [Contents](#contents)
+  - [Helpful Links](#helpful-links)
   - [Install](#install)
   - [AWQ Model Zoo](#awq-model-zoo)
   - [Examples](#examples)
   - [Usage](#usage)
-  - [Results on Vision-Language Models (VILA-7b/13B)](#results-on-vision-language-models-vila-7b13b)
-  - [Inference speed ( Token/sec )](#inference-speed--tokensec-)
+  - [Results on Visual Language Models](#results-on-visual-language-models)
   - [Reference](#reference)
   - [Related Projects](#related-projects)
 
@@ -101,9 +113,8 @@ pip install -e .
 * For **edge devices** like Orin, before running the commands above, please:
 
     1. Modify [pyproject.toml](pyproject.toml) by commenting out [this line](https://github.com/mit-han-lab/llm-awq/blob/3fce69061682fdd528824e5da3d03a8a8b545f2a/pyproject.toml#L17).
-    2. Set [this line](https://github.com/mit-han-lab/llm-awq/blob/3fce69061682fdd528824e5da3d03a8a8b545f2a/pyproject.toml#18) to transformers==4.32.0.
-    3. Manually install precompiled PyTorch binaries (>=2.0.0) from [NVIDIA](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048).
-    4. Set the appropriate Python version for conda environment (e.g., `conda create -n awq python=3.8 -y` for JetPack 5).
+    2. Manually install precompiled PyTorch binaries (>=2.0.0) from [NVIDIA](https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048). You also need to install torchvision from this website when running NVILA.
+    3. Set the appropriate Python version for conda environment (e.g., `conda create -n awq python=3.8 -y` for JetPack 5).
   
 3. Install efficient W4A16 (4-bit weight, 16-bit activation) CUDA kernel and optimized FP16 kernels (e.g. layernorm, positional encodings).
 ```
@@ -111,10 +122,10 @@ cd awq/kernels
 python setup.py install
 ```
 
-4. In order to run AWQ and TinyChat with VILA-1.5 model family, please install VILA:
+4. In order to run AWQ and TinyChat with NVILA model family, please install VILA:
 
 ```bash
-git clone git@github.com:Efficient-Large-Model/VILA.git
+git clone https://github.com/NVlabs/VILA.git
 cd VILA
 pip install -e .
 ```
@@ -191,12 +202,14 @@ python -m awq.entry --model_path /PATH/TO/LLAMA3/llama3-8b \
     --w_bit 4 --q_group_size 128 \
     --load_quant quant_cache/llama3-8b-w4-g128-awq.pt
 ```
+## Results on Visual Language Models
 
-## Results on Vision-Language Models (VILA-1.5)
-
-AWQ also seamlessly supports large multi-modal models (LMMs). We demonstrate the results on the recent [VILA-1.5](https://github.com/Efficient-Large-Model/VILA) model family.
+AWQ also seamlessly supports large multi-modal models (LMMs). Please refer to [TinyChat](./tinychat/README.md) for more details.
 
 
+<!-- AWQ also seamlessly supports large multi-modal models (LMMs). We demonstrate the results on the recent [VILA-1.5](https://github.com/Efficient-Large-Model/VILA) model family. -->
+
+<!-- 
 | VILA-1.5-3B   | VQA-v2            | GQA               | VizWiz  | ScienceQA         | TextVQA           | POPE    | MME     | MMBench           | MMBench-CN    | SEED    |
 | ----------- |:-----------------:|:-----------------:|:-------:|:-----------------:|:-----------------:|:-------:|:-------:|:-----------------:|:-------------:|:-------:|
 | FP16        | 80.4  | 61.5 | 53.5   | 69.0  | 60.4  | 85.9 | 1442.4 | 63.4 | 52.7   | 60.9 |
@@ -232,7 +245,7 @@ AWQ also seamlessly supports large multi-modal models (LMMs). We demonstrate the
 | VILA1.5-13B            | fp16      | 50.9  | OOM   | 6.1  |
 | VILA1.5-13B-AWQ        | int4      | 115.9 | 105.7 | 20.6 |
 | VILA1.5-40B            | fp16      | OOM  | OOM   | --  |
-| VILA1.5-40B-AWQ        | int4      | 57.0 | OOM | -- |
+| VILA1.5-40B-AWQ        | int4      | 57.0 | OOM | -- | -->
 
 
 ## Reference

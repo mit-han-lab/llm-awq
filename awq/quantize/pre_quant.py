@@ -10,6 +10,7 @@ from transformers.models.bloom.modeling_bloom import BloomForCausalLM
 from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from tinychat.models import LlavaLlamaForCausalLM
+from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
 
 from .auto_scale import auto_scale_block, apply_scale
 from .auto_clip import auto_clip_block, apply_clip
@@ -22,7 +23,7 @@ def get_named_linears(module):
 
 
 def get_blocks(model):
-    if model.__class__.__name__ == "LlamaForCausalLM":
+    if model.__class__.__name__ in ("LlamaForCausalLM", "Qwen2ForCausalLM"):
         layers = model.model.layers
     elif model.__class__.__name__ == "LlavaLlamaForCausalLM":
         # layers = [model.model.layers, model.model.vision_tower.vision_tower.vision_model.encoder.layers]
@@ -39,14 +40,17 @@ def get_blocks(model):
         layers = model.transformer.h
     elif "neox" in str(model.__class__).lower():
         layers = model.gpt_neox.layers
+    elif model.__class__.__name__ == "LlavaLlamaModel":
+        layers = model.llm.model.layers
     else:
         raise NotImplementedError(type(model))
     return layers
 
 
 def move_embed(model, device):
-    if isinstance(model, LlamaForCausalLM):
+    if isinstance(model, (LlamaForCausalLM, Qwen2ForCausalLM)):
         model.model.embed_tokens = model.model.embed_tokens.to(device)
+        model.model.rotary_emb = model.model.rotary_emb.to(device)
     elif isinstance(model, LlavaLlamaForCausalLM):
         model.model.embed_tokens = model.model.embed_tokens.to(device)
         model.model.vision_tower.vision_tower.vision_model.embeddings.to(device)
@@ -73,6 +77,8 @@ def move_embed(model, device):
         model.gpt_neox.embed_in = model.gpt_neox.embed_in.to(device)
         model.gpt_neox.emb_dropout = model.gpt_neox.emb_dropout.to(device)
         model.embed_out = model.embed_out.to(device)
+    elif "llavallamamodel" in str(model.__class__).lower():
+        model.llm.model.embed_tokens = model.llm.model.embed_tokens.to(device)
     else:
         raise NotImplementedError(type(model))
 
@@ -126,7 +132,10 @@ def run_awq(
     # patch layer 0 to catch input and kwargs
     layers[0] = Catcher(layers[0])
     try:
-        model(samples.to(next(model.parameters()).device))
+        if model.__class__.__name__ == "LlavaLlamaModel":
+            model.llm(samples.to(next(model.parameters()).device))
+        else:
+            model(samples.to(next(model.parameters()).device))
     except ValueError:  # work with early exit
         pass
     del samples
@@ -194,6 +203,9 @@ def run_awq(
 
         # Clear GPU memory
         torch.cuda.empty_cache()
+        # for line in torch.cuda.memory_summary().splitlines():
+        #     if "Allocated" in line:
+        #         print(line)
 
         if mse_range:
             clip_list = auto_clip_block(
@@ -213,6 +225,9 @@ def run_awq(
         del input_feat
         gc.collect()
         torch.cuda.empty_cache()
+        # for line in torch.cuda.memory_summary().splitlines():
+        #     if "Allocated" in line:
+        #         print(line)
 
     return awq_results
 

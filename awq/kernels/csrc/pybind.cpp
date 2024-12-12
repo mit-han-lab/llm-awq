@@ -7,6 +7,11 @@
 #include "quantization_new/gemm/gemm_cuda.h"
 #include "quantization_new/gemv/gemv_cuda.h"
 #include "position_embedding/pos_encoding.h"
+#include "rope_new/fused_rope_with_pos.h"
+#include "w8a8/w8a8_gemm_cuda.h"
+#include "w8a8/quantization.h"
+// #include "fused_layernorm/layernorm.h"
+
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
@@ -20,4 +25,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           py::arg("q"), py::arg("k"), py::arg("v"), py::arg("k_cache"), py::arg("v_cache"),
           py::arg("length_per_sample_"), py::arg("alibi_slopes_"), py::arg("timestep"), py::arg("rotary_embedding_dim")=0,
           py::arg("rotary_base")=10000.0f, py::arg("rotary_scale")=1.0f, py::arg("neox_rotary_style")=true);
+    m.def("fused_rope_with_pos_forward_func", &fused_rope_with_pos_forward_func,"Fused rope forward function with B,S,D embedding");
+    m.def("w8a8_gemm_forward_cuda", &w8a8_gemm_forward_cuda, "our w8a8 gemm kernel");
+    m.def("w8a8_gemm_fuse_bias_forward_cuda", &w8a8_gemm_fuse_bias_forward_cuda, "our w8a8 gemm fused bias kernel");
+    m.def("invoke_quant", &invoke_quant, "fp16->int8 quantization");
+    // m.def("rms_norm_general", &rms_norm_general, py::arg("out"), py::arg("input"),
+    //     py::arg("weight"), py::arg("scaling"), py::arg("epsilon"), py::arg("use_per_token_quant") = false,
+    //     "Apply Root Mean Square (RMS) Normalization to the input tensor (TRTLLM kernel).");
 }

@@ -8,7 +8,7 @@ __all__ = ["device_warmup", "tune_all_wqlinears"]
 
 
 def device_warmup(device: str):
-    warm_up = torch.randn((4096, 4096)).to(device)
+    warm_up = torch.randn((8192, 8192)).to(device)
     for i in range(100):
         torch.mm(warm_up, warm_up)
 

@@ -12,9 +12,10 @@ from transformers.generation.logits_process import (
     TopKLogitsWarper,
     TopPLogitsWarper,
 )
-from llava.constants import (
-    IMAGE_TOKEN_INDEX,
-)
+
+# from llava.constants import (
+#     IMAGE_TOKEN_INDEX,
+# )
 
 context_tokens = 0
 context_time = 0.0
