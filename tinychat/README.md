@@ -493,6 +493,17 @@ python nvila_demo.py --model-path EPATH/TO/NVILA       \
 ```
 
 
+## Team
+
+TinyChat is developed by the following wonderful team:
+
+- [Shang Yang](https://ys-2020.github.io/): Project Lead, TinyChat v1 and v2 Lead;
+- [Haotian Tang](http://kentang.net): Project Lead, TinyChat v1 Lead, v2 Mentor;
+- [Yuming Lou](<>): TinyChat v2 Lead;
+- [Junxian Guo](<>): TinyChat v2 Contributor;
+- [Song Han](https://hanlab.mit.edu/songhan): Project Advisor.
+
+Credits also go to AWQ algorithm leads: [Ji Lin](https://www.linji.me/) and [Jiaming Tang](https://jiamingtang.me/).
 
 ## Reference
 
