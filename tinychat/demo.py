@@ -259,4 +259,3 @@ if __name__ == "__main__":
         ):  # Only memorize previous conversations when kv_cache_size > 512
             model_prompter.update_template(outputs, args.chunk_prefilling)
         count += 1
-        break
