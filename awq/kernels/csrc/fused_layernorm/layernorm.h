@@ -14,6 +14,7 @@
 void rms_norm_general(torch::Tensor &out,    // [..., hidden_size]
               torch::Tensor &input,  // [..., hidden_size]
               torch::Tensor &weight, // [hidden_size]
+              torch::Tensor &bias, // [hidden_size]
               torch::Tensor &scaling, // [tokens] or [1]
               float epsilon,
               bool use_per_token_quant);

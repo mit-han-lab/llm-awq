@@ -10,7 +10,7 @@
 #include "rope_new/fused_rope_with_pos.h"
 #include "w8a8/w8a8_gemm_cuda.h"
 #include "w8a8/quantization.h"
-// #include "fused_layernorm/layernorm.h"
+#include "fused_layernorm/layernorm.h"
 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
@@ -29,7 +29,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("w8a8_gemm_forward_cuda", &w8a8_gemm_forward_cuda, "our w8a8 gemm kernel");
     m.def("w8a8_gemm_fuse_bias_forward_cuda", &w8a8_gemm_fuse_bias_forward_cuda, "our w8a8 gemm fused bias kernel");
     m.def("invoke_quant", &invoke_quant, "fp16->int8 quantization");
-    // m.def("rms_norm_general", &rms_norm_general, py::arg("out"), py::arg("input"),
-    //     py::arg("weight"), py::arg("scaling"), py::arg("epsilon"), py::arg("use_per_token_quant") = false,
-    //     "Apply Root Mean Square (RMS) Normalization to the input tensor (TRTLLM kernel).");
+    m.def("rms_norm_general", &rms_norm_general, py::arg("out"), py::arg("input"),
+        py::arg("weight"), py::arg("bias"),py::arg("scaling"), py::arg("epsilon"), py::arg("use_per_token_quant") = true,
+        "Apply Root Mean Square (RMS) Normalization to the input tensor (TRTLLM kernel).");
 }

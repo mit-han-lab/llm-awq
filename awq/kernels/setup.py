@@ -40,7 +40,7 @@ setup(
                 "csrc/rope_new/fused_rope_with_pos.cu",
                 "csrc/w8a8/w8a8_gemm_cuda.cu",
                 "csrc/w8a8/quantization.cu",
-                # "csrc/fused_layernorm/layernorm_kernels.cu"
+                "csrc/fused_layernorm/layernorm_kernels.cu"
             ],
             extra_compile_args=extra_compile_args,
         ),

@@ -32,7 +32,7 @@
   constexpr int NUM_WARPS = (CTA_M / WARP_M) * (CTA_N / WARP_N) * (CTA_K / WARP_K); \
   constexpr int kSmemByteSize =                                                  \
       (CTA_M * (CTA_K + SMEM_PAD_A) + CTA_N * (CTA_K + SMEM_PAD_B)) * STAGES *   \
-      sizeof(int8_t);                                                            \
+      sizeof(int8_t) + CTA_N * sizeof(float);  \
   if (kSmemByteSize >= 99 * 1024)                                                \
   {                                                                              \
     printf("This kernel requires %d Bytes of shared memory, which exceeds "      \
@@ -41,12 +41,12 @@
     return ;                                                           \
   }                                                                              \
   int num_blocks_m = (num_out_feats + CTA_M - 1) / CTA_M;                        \
-  int num_blocks_n = num_out_channels / CTA_N / 1;                               \
+  int num_blocks_n = num_out_channels / CTA_N / 1;    \
   const int log_tile = get_log_tile<8>((num_out_feats + CTA_M - 1) / CTA_M);     \
   const int tile_shift = 1 << log_tile;                                          \
   dim3 num_blocks(num_blocks_n *tile_shift,                                      \
                   (num_blocks_m + tile_shift - 1) / tile_shift);                 \
-  dim3 threads_per_block(WARP_SIZE, NUM_WARPS);                                  \
+  dim3 threads_per_block(WARP_SIZE, NUM_WARPS); \
   auto kernel_func =                                                             \
       dense_kernel0_fuse_bias<CTA_M, CTA_N, CTA_K, WARP_M, WARP_N, WARP_K, STAGES>;        \
   cudaFuncSetAttribute(kernel_func, cudaFuncAttributeMaxDynamicSharedMemorySize, \
@@ -300,7 +300,7 @@ template <int CTA_M, int CTA_N, int CTA_K, int WARP_M, int WARP_N, int WARP_K,
           int STAGES>
 __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restrict__ B,
                               half2 *__restrict__ wscales, half *__restrict__ ascales,
-                              half *__restrict__ C, half2 *__restrict__ Bias,
+                              half *__restrict__ C, half *__restrict__ Bias,
                               int M, int N, int K)
 {
   constexpr int NUM_WARPS_MN = CTA_M / WARP_M * CTA_N / WARP_N;
@@ -326,9 +326,10 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
   constexpr int kSmemSizeBPerStage = CTA_N * kSmemPadKB;
   constexpr int kSmemSizeA = kSmemSizeAPerStage * STAGES;
   constexpr int kSmemSizeB = kSmemSizeBPerStage * STAGES;
-  extern __shared__ int8_t mem_shared[];
+  extern __shared__ int8_t mem_shared[]; //extern: dynamic share, decided in kernel launch; shared: within block
   int8_t *A_shared = mem_shared;
   int8_t *B_shared = mem_shared + kSmemSizeA;
+  float *Bias_shared= reinterpret_cast<float*>(mem_shared + kSmemSizeA + kSmemSizeB);
   int8_t A_shared_warp_[2][WARP_M * WARP_K /
                            WARP_SIZE];
   int8_t B_shared_warp_[2][WARP_N * WARP_K /
@@ -344,14 +345,14 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
   int cta_offset_m = blockIdx_m * CTA_M;
   int cta_offset_n = blockIdx_n * CTA_N;
   int warp_mn = threadIdx.y % NUM_WARPS_MN;
-  int slice_id = threadIdx.y / NUM_WARPS_MN;
+  int slice_id = threadIdx.y / NUM_WARPS_MN; // Always zero if threadIdx.z==0!
   int warp_offset_m = (warp_mn % (CTA_M / WARP_M)) * WARP_M;
   int warp_offset_n = (warp_mn / (CTA_M / WARP_M)) * WARP_N;
   int warp_offset_k = slice_id * WARP_K;
-
+  
   for (int i = 0; i < CTA_M * CTA_N / CTA_SIZE_MN; i++)
     C_warp[i] = 0;
-
+    
   int gemm_iters = (K + CTA_K - 1) / CTA_K;
   int k_0_0_ld = 0;
   int k_0_0 = 0;
@@ -359,7 +360,7 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
   int A_hoisted_row = threadIdx.y * A_warp_step_m + (threadIdx.x / A_threads_per_row);
   int A_hoisted_col = (threadIdx.x % A_threads_per_row);
   int A_hoisted_col_swizzled = A_hoisted_col ^ (A_hoisted_row / 2) & 3;
-
+  
   int B_hoisted_row = threadIdx.y * B_warp_step_n + (threadIdx.x / B_threads_per_row);
   int B_hoisted_col = (threadIdx.x % B_threads_per_row);
   int B_hoisted_col_swizzled = B_hoisted_col ^ (B_hoisted_row / 2) & 3;
@@ -374,6 +375,18 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
   int8_t *B_hoisted = B + cta_offset_n * K + B_hoisted_row * K +
                       B_hoisted_col * PACK_SIZE;
   bool A_g2s_preds[A_total_global_iters];
+  //debug
+  // printf("A: %d ",A_total_global_iters);
+  // printf("B: %d ",B_total_global_iters);
+  // printf("prologue_stages: %d ",prologue_stages);
+  // __shared__ float2 Bias_shared[CTA_N];
+  #pragma unroll
+  for (int i = 0; i < CTA_N ; i++)
+  {
+    Bias_shared[i] = __half2float(Bias[cta_offset_n+i]);
+  }
+
+
 #pragma unroll
   for (int i = 0; i < A_total_global_iters; i++)
   {
@@ -395,6 +408,8 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
   if constexpr (STAGES > 1)
     __pipeline_wait_prior(STAGES - 2);
   __syncthreads();
+
+// global_to_share_bias<CTA_N,CTA_SIZE>(Bias,Bias_shared,cta_offset_n);
 
   share_to_reg_one_stage_A<CTA_M, CTA_N, CTA_K, CTA_SIZE, STAGES>(
       A_shared + warp_offset_k, A_shared_warp_[0], warp_offset_m, warp_offset_n, 0,
@@ -547,14 +562,13 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
         for (int local_id = 0; local_id < OP_M * 16 / WARP_SIZE; local_id += 2)
         {
           int row_wb = row_wb_1 + (local_id % 4) / 2 * 8;
-          if (row_wb < M){
-            int col_wb = col_wb_1 + (local_id / 4) * 8 + (local_id % 2);
+          int col_wb = col_wb_1 + (local_id / 4) * 8 + (local_id % 2);
+          if (row_wb < M){           
             float2 wscale = __half22float2(*(wscales + col_wb / 2));
             float ascale = __half2float(ascales[row_wb]);
-            float2 bias   = __half22float2(Bias[col_wb]);
             float2 psums = make_float2(__int2float_rn(C_warp_local[local_id]), __int2float_rn(C_warp_local[local_id + 1]));
-            psums.x = psums.x * wscale.x * ascale + bias.x;
-            psums.y = psums.y * wscale.y * ascale + bias.y;
+            psums.x = psums.x * wscale.x * ascale + Bias_shared[col_wb % CTA_N];
+            psums.y = psums.y * wscale.y * ascale + Bias_shared[col_wb % CTA_N + 1];
             *reinterpret_cast<half2 *>(C + row_wb * N + col_wb) = __float22half2_rn(psums);
           }
         };
@@ -576,7 +590,7 @@ void w8a8_gemm_fuse_bias_forward_cuda(torch::Tensor _in_feats,
   auto kernel = reinterpret_cast<int8_t *>(_kernel.data_ptr<int8_t>());
   auto wscales = reinterpret_cast<half2 *>(_wscales.data_ptr());
   auto ascales = reinterpret_cast<half *>(_ascales.data_ptr());
-  auto bias = reinterpret_cast<half2 *>(_bias.data_ptr());
+  auto bias = reinterpret_cast<half *>(_bias.data_ptr());
   // auto options =
   //     torch::TensorOptions().dtype(torch::kFloat16).device(_in_feats.device());
   // at::Tensor _out_feats =
@@ -592,10 +606,10 @@ void w8a8_gemm_fuse_bias_forward_cuda(torch::Tensor _in_feats,
     constexpr int CTA_M = 128;
     constexpr int CTA_N = 128;
     constexpr int CTA_K = 64;
-    constexpr int WARP_M = 128;
+    constexpr int WARP_M = 64;
     constexpr int WARP_N = 32;
     constexpr int WARP_K = 64;
-    constexpr int STAGES = 3;
+    constexpr int STAGES = 6;
     KERNEL_LAUNCH_CODE_FUSE_BIAS
   }
   else 
@@ -604,21 +618,13 @@ void w8a8_gemm_fuse_bias_forward_cuda(torch::Tensor _in_feats,
     constexpr int CTA_N = 64;
     constexpr int CTA_K = 64;
     constexpr int WARP_M = 32;
-    constexpr int WARP_N = 32;
+    constexpr int WARP_N = 16;
     constexpr int WARP_K = 64;
     constexpr int STAGES = 6;
     KERNEL_LAUNCH_CODE_FUSE_BIAS
   }
   return ;
 }
-
-
-
-
-
-
-
-
 
 
 template <int CTA_M, int CTA_N, int CTA_K, int WARP_M, int WARP_N, int WARP_K,
