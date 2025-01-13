@@ -97,30 +97,26 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         if len(x.shape) > 2:
             assert 0, "Not implemented"
             x = x.view(-1, x_shape[-1])
-        # If use awq_inference_engine.w8a8_gemm_forward_cuda
-        awq_inference_engine.w8a8_gemm_forward_cuda(
-            x, self.weight, self.dequant_scale, input_scale, output_buffer
-        )
-
-        # If use awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda
-        # awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda(
-        #     x, self.weight, self.dequant_scale.half(), input_scale.half(), output_buffer, bias
-        # )
+        if bias is not None:
+            # If use awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda
+            awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda(
+            x, self.weight, self.dequant_scale, input_scale, output_buffer, bias
+            )
+        else:
+            # If use awq_inference_engine.w8a8_gemm_forward_cuda
+            awq_inference_engine.w8a8_gemm_forward_cuda(
+                x, self.weight, self.dequant_scale, input_scale, output_buffer
+            )
+        
+        
         if len(x.shape) > 2:
             assert 0, "Not implemented 2"
             output_buffer = output_buffer.view(*x_shape[:-1], -1)
 
     def forward(self, input_, input_scale, output_buffer):
         # Matrix multiply.
-
-        # If use awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda
-        # self.apply_weights(input_, input_scale, output_buffer, self.bias)
-
         # If use awq_inference_engine.w8a8_gemm_forward_cuda
-        self.apply_weights(input_, input_scale, output_buffer)
-        output_bias = self.bias
-        if output_bias is not None:
-            output_buffer += output_bias
+        self.apply_weights(input_, input_scale, output_buffer, self.bias)
 
     @classmethod
     def from_linear(
@@ -230,15 +226,7 @@ class FakeW8A8Linear(torch.nn.Module):
         scales = input.abs().max(dim=-1, keepdim=True)[0]
         scales.clamp_(min=1e-5).div_(self.maxv)
         input.div_(scales).round_().mul_(scales)
-        # print(scales.abs().max(dim=-1, keepdim=True)[0].reshape(-1))
-        # print(torch.sum(input==0)/input.numel())
         output = torch.functional.F.linear(input, self.weight, self.bias)
-        # output=input.float()@(self.weight.float().T)
-        # # print(self.weight)
-        # if self.bias is not None:
-        #     output=output+self.bias.float()
-        # # print(output[0,0])
-        # # print(torch.sum(torch.isnan(output))/output.numel())
         return output
 
     @classmethod
