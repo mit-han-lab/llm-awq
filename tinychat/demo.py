@@ -84,6 +84,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_type", type=str, default="LLaMa", help="type of the model"
     )
+    parser.add_argument("--dtype", type=str, default="float16", choices=["float16", "bfloat16"])
     parser.add_argument(
         "--model_path",
         type=str,
@@ -134,6 +135,7 @@ if __name__ == "__main__":
         "llama",
         "falcon",
         "mpt",
+        "qwen",
     ], "We only support llama & falcon & mpt now"
     assert args.precision in ["W4A16", "W16A16"], "We only support W4A16/W16A16 now"
 
@@ -150,7 +152,7 @@ if __name__ == "__main__":
         print("=" * 80)
     # TODO (Haotian): a more elegant implementation here.
     # We need to update these global variables before models use them.
-    from tinychat.models import FalconForCausalLM, LlamaForCausalLM, MPTForCausalLM
+    from tinychat.models import FalconForCausalLM, LlamaForCausalLM, MPTForCausalLM, Qwen2ForCausalLM
 
     def skip(*args, **kwargs):
         pass
@@ -170,23 +172,30 @@ if __name__ == "__main__":
         tokenizer = AutoTokenizer.from_pretrained(
             args.model_path, use_fast=False, trust_remote_code=True
         )
+    torch_dtype = torch.float16 if args.dtype == "float16" else torch.bfloat16
     modeling_utils._init_weights = False
-    torch.set_default_dtype(torch.half)
+    torch.set_default_dtype(torch_dtype)
 
     model_type_dict = {
         "llama": LlamaForCausalLM,
         "falcon": FalconForCausalLM,
         "mpt": MPTForCausalLM,
+        "qwen": Qwen2ForCausalLM
     }
 
     if args.precision == "W4A16":
         if args.model_type.lower() == "llama":
-            model = model_type_dict["llama"](config).half()
+            model = model_type_dict["llama"](config).to(torch_dtype)
+            model = load_awq_llama_fast(
+                model, args.load_quant, 4, args.q_group_size, args.device
+            )
+        elif args.model_type.lower() == "qwen":
+            model = model_type_dict["qwen"](config).to(torch_dtype)
             model = load_awq_llama_fast(
                 model, args.load_quant, 4, args.q_group_size, args.device
             )
         else:
-            model = model_type_dict[args.model_type.lower()](config).half()
+            model = model_type_dict[args.model_type.lower()](config).to(torch_dtype)
             model = load_awq_model(
                 model, args.load_quant, 4, args.q_group_size, args.device
             )
@@ -194,7 +203,7 @@ if __name__ == "__main__":
         loaded_model = AutoModelForCausalLM.from_pretrained(
             args.model_path,
             config=config,
-            torch_dtype=torch.float16,
+            torch_dtype=torch_dtype,
             trust_remote_code=True,
         )
         model = model_type_dict[args.model_type.lower()](config).half().to(args.device)
@@ -209,7 +218,7 @@ if __name__ == "__main__":
     stream_generator = StreamGenerator
 
     # Optimize AWQ quantized model
-    if args.precision == "W4A16" and args.model_type.lower() == "llama":
+    if args.precision == "W4A16" and (args.model_type.lower() == "llama" or args.model_type.lower() == "qwen"):
         from tinychat.modules import make_quant_norm, make_quant_attn
 
         if args.flash_attn:

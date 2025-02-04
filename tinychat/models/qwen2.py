@@ -449,38 +449,30 @@ class Qwen2ForCausalLM(Qwen2ForCausalLM):
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.config = config
-
+    
+    @torch.inference_mode()
     def forward(
         self,
         input_ids: torch.Tensor,
         start_pos: int = 0,
         inputs_embeds: torch.Tensor = None,
         chunk_prefilling: bool = False,
+        quant=True,
     ):
-        outputs = self.model(
-            input_ids=input_ids,
-            inputs_embeds=inputs_embeds,
-            start_pos=start_pos,
-            chunk_prefilling=chunk_prefilling,
-        )
-
-        logits = self.lm_head(outputs)
-        return logits
-
-    def forwardfp16(
-        self,
-        input_ids: torch.Tensor,
-        start_pos: int = 0,
-        inputs_embeds: torch.Tensor = None,
-        chunk_prefilling: bool = False,
-    ):
-        outputs = self.model.forwardfp16(
-            input_ids=input_ids,
-            inputs_embeds=inputs_embeds,
-            start_pos=start_pos,
-            chunk_prefilling=chunk_prefilling,
-        )
-
+        if quant:
+            outputs = self.model(
+                input_ids=input_ids,
+                inputs_embeds=inputs_embeds,
+                start_pos=start_pos,
+                chunk_prefilling=chunk_prefilling,
+            )
+        else:
+            outputs = self.model.forwardfp16(
+                input_ids=input_ids,
+                inputs_embeds=inputs_embeds,
+                start_pos=start_pos,
+                chunk_prefilling=chunk_prefilling,
+            )
         logits = self.lm_head(outputs)
         return logits
 
@@ -519,32 +511,4 @@ class Qwen2ForCausalLM(Qwen2ForCausalLM):
         ted = time.time()
         print("Decoding througput: {:.6f} tokens/s".format(max_output / (ted - tst)))
 
-        return torch.cat(output_list, dim=1)
-
-    def generate(
-        self, inputs_embeds, attention_mask, quant_llm=False, **generation_kwargs
-    ):
-        max_len = min(
-            max_seq_len,
-            self.model.layers[0].self_attn.max_position_embeddings,
-            generation_kwargs["generation_config"].max_length,
-        )
-        eos_token_id = generation_kwargs["generation_config"].eos_token_id
-        output_list = []
-        start_pos = 0
-        if quant_llm:
-            func = self.forward
-        else:
-            func = self.forwardfp16
-        # Prefilling
-        token = func(None, start_pos, inputs_embeds)
-        start_pos = inputs_embeds.shape[1]
-        # decoding
-        while start_pos < max_len:
-            token = torch.argmax(token, keepdim=True)[0]
-            output_list.append(token)
-            if token in eos_token_id:
-                break
-            token = func(token, start_pos)
-            start_pos += 1
         return torch.cat(output_list, dim=1)
