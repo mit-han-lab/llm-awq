@@ -35,7 +35,7 @@ def scale_ln_fcs(ln, fcs, scales):
     if not isinstance(fcs, list):
         fcs = [fcs]
 
-    scales = scales.to(ln.weight.device)
+    scales = scales.to(ln.weight.device).to(ln.weight.dtype)
 
     ln.weight.div_(scales)
     if hasattr(ln, "bias") and ln.bias is not None:
@@ -57,7 +57,7 @@ def scale_fc_fc(fc1, fc2, scales):
     assert isinstance(fc2, nn.Linear)
     # assert fc1.out_features == fc2.in_features
 
-    scales = scales.to(fc1.weight.device)
+    scales = scales.to(fc1.weight.device).to(fc1.weight.dtype)
 
     # fc1.weight.div_(scales.view(-1, 1))
     fc1.weight[-scales.size(0) :].div_(scales.view(-1, 1))
@@ -77,7 +77,7 @@ def scale_gelu_fc(gelu, fc, scales):
     assert isinstance(gelu, (nn.GELU, BloomGelu, GELUActivation))
     assert isinstance(fc, nn.Linear)
 
-    fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
+    fc.weight.mul_(scales.view(1, -1).to(fc.weight.device).to(fc.weight.dtype))
 
     for p in fc.parameters():
         assert torch.isnan(p).sum() == 0
@@ -472,7 +472,7 @@ def apply_scale(module, scales_list, input_feat_dict=None):
         if input_feat_dict is not None:
             for layer_name in layer_names:
                 inp = input_feat_dict[layer_name]
-                inp.div_(scales.view(1, -1).to(inp.device))
+                inp.div_(scales.view(1, -1).to(inp.device).to(inp.dtype))
 
         prev_op.cpu()
         for layer in layers:

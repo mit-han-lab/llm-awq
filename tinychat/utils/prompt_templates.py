@@ -210,6 +210,17 @@ class Llama3Prompter(BasePrompter):
             system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon
         )
 
+class QwenPrompter(BasePrompter):
+    def __init__(self):
+        system_inst = "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n"
+        role1 = "<|im_start|>user\n"
+        role2 = "<|im_start|>assistant\n"
+        sen_spliter = "<|im_end|>\n"
+        qa_spliter = ""
+        colon = ""
+        super().__init__(
+            system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon
+        )
 
 class LlavaLlamaPrompter(BasePrompter):
     def __init__(self):
@@ -336,6 +347,8 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
     elif model_type.lower() == "falcon":
         # return FalconPrompter()
         return FalconSimplePrompter()
+    elif "qwen" in model_path.lower():
+            return QwenPrompter()
     elif model_type.lower() == "mpt":
         if "mpt" and "chat" in model_path.lower():
             return MPTChatPrompter()
@@ -355,6 +368,8 @@ def get_stop_token_ids(model_type, model_path=""):
             # llama3
             return [128001, 128009]
         return []
+    elif model_type.lower() == "qwen":
+        return [151645]
     elif model_type.lower() == "falcon":
         return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     elif model_type.lower() == "mpt":

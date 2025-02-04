@@ -96,7 +96,7 @@ def StreamGenerator(
                 logits = out.logits
                 past_key_values = out.past_key_values
         else:
-            if "llama" in model.__class__.__name__.lower() and not quant_llm:
+            if ("llama" in model.__class__.__name__.lower() or "qwen" in model.__class__.__name__.lower()) and not quant_llm:
                 out = model(
                     inputs,
                     start_pos=start_pos,
