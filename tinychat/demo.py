@@ -206,7 +206,7 @@ if __name__ == "__main__":
             torch_dtype=torch_dtype,
             trust_remote_code=True,
         )
-        model = model_type_dict[args.model_type.lower()](config).half().to(args.device)
+        model = model_type_dict[args.model_type.lower()](config).to(torch_dtype).to(args.device)
         model.load_state_dict(loaded_model.state_dict())
     # device warm up
     device_warmup(args.device)
