@@ -25,6 +25,7 @@ import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_path", type=str, help="path of the hf model")
+parser.add_argument("--dtype", type=str, default="float16", choices=["float16", "bfloat16"])
 parser.add_argument("--batch_size", type=int, default=1, help="batch size")
 parser.add_argument("--tasks", default=None, type=str)
 parser.add_argument("--output_path", default=None, type=str)
@@ -118,7 +119,8 @@ print("Quantization config:", q_config)
 # build model and tokenizer
 
 
-def build_model_and_enc(model_path):
+def build_model_and_enc(model_path, dtype):
+    torch_dtype = torch.float16 if dtype == "float16" else torch.bfloat16
     if not os.path.exists(model_path):  # look into ssd
         raise FileNotFoundError(f"{model_path} not found!")
     print(f"* Building model {model_path}")
@@ -152,7 +154,7 @@ def build_model_and_enc(model_path):
         print("Loading pre-computed quantized weights...")
         with init_empty_weights():
             model = AutoModelForCausalLM.from_config(
-                config=config, torch_dtype=torch.float16, trust_remote_code=True
+                config=config, torch_dtype=torch_dtype, trust_remote_code=True
             )
         real_quantize_model_weight(
             model, w_bit=args.w_bit, q_config=q_config, init_only=True
@@ -187,7 +189,7 @@ def build_model_and_enc(model_path):
     else:  # fp16 to quantized
         args.run_awq &= not args.load_awq  # if load_awq, no need to run awq
         # Init model on CPU:
-        kwargs = {"torch_dtype": torch.float16, "low_cpu_mem_usage": True}
+        kwargs = {"torch_dtype": torch_dtype, "low_cpu_mem_usage": True}
         if not vila_10_quant_mode:
             model = AutoModelForCausalLM.from_pretrained(
                 model_path, config=config, trust_remote_code=True, **kwargs
@@ -292,7 +294,7 @@ def main():
     if args.dump_awq and os.path.exists(args.dump_awq):
         print(f"Found existing AWQ results {args.dump_awq}, exit.")
         exit()
-    model, enc = build_model_and_enc(args.model_path)
+    model, enc = build_model_and_enc(args.model_path, args.dtype)
 
     if args.tasks is not None:
         # https://github.com/IST-DASLab/gptq/blob/2d65066eeb06a5c9ff5184d8cebdf33662c67faf/llama.py#L206

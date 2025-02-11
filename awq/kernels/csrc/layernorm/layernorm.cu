@@ -12,6 +12,19 @@ https://github.com/NVIDIA/FasterTransformer/blob/main/src/fastertransformer/kern
 #include <cuda_runtime.h>
 #include <c10/cuda/CUDAGuard.h>
 
+#define DISPATCH_PYTORCH_DTYPE_TO_CTYPE_FP16(pytorch_dtype, c_type, ...)                \
+  if (pytorch_dtype == at::ScalarType::Half) {                                          \
+    using c_type = half;                                                                \
+    __VA_ARGS__                                                                         \
+  } else if (pytorch_dtype == at::ScalarType::BFloat16) {                               \
+    using c_type = nv_bfloat16;                                                         \
+    __VA_ARGS__                                                                         \
+  } else {                                                                              \
+    std::ostringstream oss;                                                             \
+    oss << __PRETTY_FUNCTION__ << " failed to dispatch data type " << pytorch_dtype;    \
+    TORCH_CHECK(false, oss.str());                                                      \
+  }
+
 static inline __device__ float to_float(half src)
 {
     return __half2float(src);
@@ -105,9 +118,14 @@ void layernorm_forward_cuda(
     int n = _input.size(2);
     const at::cuda::OptionalCUDAGuard device_guard(device_of(_input));
 
-    auto input = reinterpret_cast<half*>(_input.data_ptr<at::Half>());
-    auto gamma = reinterpret_cast<half*>(_gamma.data_ptr<at::Half>());
-    auto out = reinterpret_cast<half*>(_out.data_ptr<at::Half>());
+    auto data_type = _input.scalar_type();
+    TORCH_CHECK(_gamma.scalar_type() == data_type);
+    TORCH_CHECK(_out.scalar_type() == data_type);
 
-    invokeGeneralT5LayerNorm(out, input, gamma, eps, m, n);
+    DISPATCH_PYTORCH_DTYPE_TO_CTYPE_FP16(data_type, ctype, {
+        auto input = reinterpret_cast<ctype*>(_input.data_ptr());
+        auto gamma = reinterpret_cast<ctype*>(_gamma.data_ptr());
+        auto out = reinterpret_cast<ctype*>(_out.data_ptr());
+        invokeGeneralT5LayerNorm(out, input, gamma, eps, m, n);
+    });
 }

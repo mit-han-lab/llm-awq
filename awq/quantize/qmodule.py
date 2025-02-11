@@ -76,7 +76,7 @@ class ScaledActivation(nn.Module):
 
 
 class WQLinear(nn.Module):
-    def __init__(self, w_bit, group_size, in_features, out_features, bias, dev):
+    def __init__(self, w_bit, group_size, in_features, out_features, bias, dev, dtype=torch.float16):
         super().__init__()
 
         if w_bit not in [4]:
@@ -113,7 +113,7 @@ class WQLinear(nn.Module):
                     calculate_zeros_width(in_features, self.group_size) * pack_num,
                     out_features,
                 ),
-                dtype=torch.float16,
+                dtype=dtype,
                 device=dev,
             ),
         )
@@ -124,14 +124,14 @@ class WQLinear(nn.Module):
                     calculate_zeros_width(in_features, self.group_size) * pack_num,
                     out_features,
                 ),
-                dtype=torch.float16,
+                dtype=dtype,
                 device=dev,
             ),
         )
 
         if bias:
             self.register_buffer(
-                "bias", torch.zeros((out_features), dtype=torch.float16, device=dev)
+                "bias", torch.zeros((out_features), dtype=dtype, device=dev)
             )
         else:
             self.bias = None
@@ -147,6 +147,7 @@ class WQLinear(nn.Module):
             linear.out_features,
             linear.bias is not None,
             linear.weight.device,
+            dtype=linear.weight.data.dtype
         )
         if init_only:  # just prepare for loading sd
             return awq_linear
@@ -155,20 +156,22 @@ class WQLinear(nn.Module):
         assert scales is not None and zeros is not None
         scale_zeros = zeros * scales
 
+        dtype = scales.dtype
+
         pack_num = 32 // awq_linear.w_bit
         qscales = torch.zeros(
             (
                 scales.shape[0],
                 calculate_zeros_width(linear.in_features, group_size) * pack_num,
             ),
-            dtype=torch.float16,
+            dtype=dtype,
             device=scales.device,
         )
         qscales[:, : scales.shape[1]] = scales
         # awq_linear.scales = scales.clone().half()
         awq_linear.scales = qscales.transpose(1, 0).contiguous()
         if linear.bias is not None:
-            awq_linear.bias = linear.bias.clone().half()
+            awq_linear.bias = linear.bias.clone().to(dtype)
 
         intweight = []
         for idx in range(awq_linear.in_features):
@@ -190,7 +193,7 @@ class WQLinear(nn.Module):
         # scaled_zeros[:, :scales.shape[1]] = -(qscales[:, :scales.shape[1]] * (zeros.to(torch.float32) - 8.0)).to(torch.float16)
         scaled_zeros[:, : scales.shape[1]] = -(
             qscales[:, : scales.shape[1]] * (zeros.to(torch.float32))
-        ).to(torch.float16)
+        ).to(dtype)
         awq_linear.scaled_zeros = scaled_zeros.transpose(1, 0).contiguous()
 
         return awq_linear
