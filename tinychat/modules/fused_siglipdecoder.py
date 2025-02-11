@@ -20,7 +20,7 @@ CLIP_RANGE = 5
 
 import awq_inference_engine
 
-
+@torch.no_grad()
 class QuantSiglipEncoder(nn.Module):
     def __init__(self, module: SiglipEncoder, bsz=64, seqlen=1024):
         super().__init__()
@@ -80,7 +80,7 @@ class QuantSiglipEncoder(nn.Module):
             attentions=None,
         )
 
-
+@torch.no_grad()
 class QuantSiglipMLP(nn.Module):
     def __init__(self, siglipmlp, init_only=False):
         super().__init__()
@@ -117,7 +117,7 @@ class QuantSiglipMLP(nn.Module):
             buffer.in_out_fc2_act_buffer,
         )
 
-
+@torch.no_grad()
 class QuantSiglipFlashAttention2(nn.Module):
     def __init__(
         self,
@@ -175,15 +175,15 @@ class QuantSiglipFlashAttention2(nn.Module):
         )
         # buffer.in_out_fc2_act_buffer=self.out_proj(buffer.in_out_fc2_act_buffer)
 
-
+@torch.no_grad()
 class QuantSiglipEncoderLayer(nn.Module):
     def __init__(self, module: SiglipEncoderLayer):
         super().__init__()
         self.embed_dim = module.embed_dim
         self.self_attn = QuantSiglipFlashAttention2(module.self_attn)
-        self.layer_norm1 = module.layer_norm1.cuda()
+        self.layer_norm1 = RMSNormGeneral(module.layer_norm1.weight.data, module.layer_norm1.bias.data, module.layer_norm1.eps, True).cuda()
         self.mlp = QuantSiglipMLP(module.mlp)
-        self.layer_norm2 = module.layer_norm2.cuda()
+        self.layer_norm2 = RMSNormGeneral(module.layer_norm2.weight.data, module.layer_norm2.bias.data, module.layer_norm2.eps, True).cuda()
         self.quant = self.invoke_quant_norm
 
     def invoke_quant_norm(self, buffer, normfn_output):
@@ -205,28 +205,70 @@ class QuantSiglipEncoderLayer(nn.Module):
         # FP16 in FP16 out
         # Self Attention
         residual = hidden_states
-        normfn_output = self.layer_norm1(hidden_states)
+        self.layer_norm1(
+            hidden_states.reshape(-1, self.embed_dim),
+            buffer.quantized_hidden_states_buffer,
+            buffer.quantized_scale_buffer
+        )
         # INT8 quantization
-        # normfn_output=torch.clip(normfn_output,min=-CLIP_RANGE,max=CLIP_RANGE)
-        self.quant(buffer, normfn_output.reshape(-1, 1152))
+
         # INT8 -> FP16
         self.self_attn(buffer, bsz, seqlen)
         hidden_states = (
-            residual.reshape(-1, residual.shape[-1]) + buffer.in_out_fc2_act_buffer
+            residual.reshape(-1, self.embed_dim) + buffer.in_out_fc2_act_buffer
         )
         # Fully Connected
         residual = hidden_states
-        normfn_output = self.layer_norm2(hidden_states)
-        # FP16 -> INT8
-        # normfn_output=torch.clip(normfn_output,min=-CLIP_RANGE,max=CLIP_RANGE)
-        normfn_output = self.quant(
-            buffer,
-            normfn_output,
+
+        self.layer_norm2(
+            hidden_states.reshape(-1, self.embed_dim),
+            buffer.quantized_hidden_states_buffer,
+            buffer.quantized_scale_buffer
         )
 
         # INT8 -> FP16
         self.mlp(buffer)
         hidden_states = (
-            residual.reshape(-1, residual.shape[-1]) + buffer.in_out_fc2_act_buffer
+            residual.reshape(-1, self.embed_dim) + buffer.in_out_fc2_act_buffer
         )
         return hidden_states
+
+@torch.no_grad()
+class RMSNormGeneral(nn.Module):
+    """Root mean square normalization (w/ per-token or per-tensor quant).
+
+    Computes x -> w * x / sqrt(E[x^2] + eps) where w is the learned weight.
+    Refer to https://arxiv.org/abs/1910.07467
+    """
+
+    def __init__(
+        self,
+        weight: torch.tensor,
+        bias: torch.tensor,
+        eps: float = 1e-6,
+        use_per_token_quant: bool = True,
+    ) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(weight,requires_grad=False)
+        self.bias = nn.Parameter(bias,requires_grad=False)
+        self.variance_epsilon = eps
+        self.use_per_token_quant = use_per_token_quant
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        quantized_hidden_states_buffer: torch.Tensor,
+        quantized_scale_buffer: torch.Tensor,
+        quantized_sum_buffer: torch.Tensor = None,
+    ) -> torch.Tensor:
+        # quantized_sum_buffer is not used, only to keep the consistency of the interface
+        awq_inference_engine.rms_norm_general(
+            quantized_hidden_states_buffer,
+            x,
+            self.weight.data,
+            self.bias.data,
+            quantized_scale_buffer,
+            self.variance_epsilon,
+            self.use_per_token_quant,
+        )
+
