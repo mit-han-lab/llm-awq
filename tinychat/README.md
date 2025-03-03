@@ -59,7 +59,7 @@ https://github.com/user-attachments/assets/b68a7a0d-5175-4030-985b-5ae0ae94f874
 
 **Answer:** The next step in the video could be to place the shaped dough onto a baking sheet and let it rise before baking.
 
-**Online demo:** https://vila.mit.edu
+**Online demo:** https://vila.hanlab.ai
 
 ## Speed Benchmarks
 
