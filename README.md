@@ -46,7 +46,7 @@ https://github.com/user-attachments/assets/b68a7a0d-5175-4030-985b-5ae0ae94f874
 
 **Answer:** The next step in the video could be to place the shaped dough onto a baking sheet and let it rise before baking.
 
-**Online demo:** https://vila.mit.edu
+**Online demo:** https://vila.hanlab.ai
 
 Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device inference** of LLMs and VLMs on **resource-constrained edge platforms**. With TinyChat, it is now possible to efficiently run **large** models on **small** and **low-power** devices even without Internet connection!
 
