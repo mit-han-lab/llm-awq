@@ -244,21 +244,3 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     main(args)
-"""
-python nvila_demo.py --model-path /home/yuming/workspace/qwen/models/nvila-video       \
-    --quant_path /home/yuming/workspace/awq4nvila/nvila-video-w4-g128.pt      \
-    --media ../figures/nvila_demo_video.mp4     \
-    --act_scale_path /home/yuming/workspace/awq4nvila/nvila-video-VT-smooth-scale.pt \
-    --all --chunk --vis-image
-
-python nvila_demo.py --model-path Efficient-Large-Model/nvila-internal-8b-v1       \
-    --quant_path /home/yuming/workspace/awq4nvila/nvila-internal-8b-v1-w4-g128.pt      \
-    --media ../figures/vila-logo.jpg    \
-    --act_scale_path /home/yuming/workspace/awq4nvila/nvila-internal-8b-v1-VT-smooth-scale.pt \
-    --all --chunk --vis-image
-
-python nvila_demo.py --model-path /home/yuming/workspace/qwen/models/nvila-lite-internal-8b-v1   \
-    --quant_path /home/yuming/workspace/awq4nvila/nvila-lite-internal-8b-v1-w4-g128.pt  \
-     --act_scale_path /home/yuming/workspace/awq4nvila/nvila-lite-internal-8b-v1-VT-smooth-scale.pt --all \
-    --media ../figures/vila-logo.jpg  --chunk --vis-image
-"""
