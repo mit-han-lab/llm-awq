@@ -224,7 +224,7 @@ template <int CTA_M, int CTA_N, int CTA_K, int CTA_SIZE, int SHARED_K_ITERS,
 __device__ __inline__ void
 global_to_share_one_stage_B(int8_t *src, int8_t *dst, int global_ncols,
                             int cta_offset_m, int cta_offset_n,
-                            int global_iter_k, int shared_iter_k, bool mask)
+                            int global_iter_k, int shared_iter_k, bool mask, bool *preds)
 {
   constexpr int total_global_iters = (CTA_N * CTA_K) / PACK_SIZE / CTA_SIZE;
   constexpr int partial_global_iters = total_global_iters / SHARED_K_ITERS;
@@ -248,11 +248,11 @@ global_to_share_one_stage_B(int8_t *src, int8_t *dst, int global_ncols,
     if constexpr (STAGES > 1)
     {
       uint32_t addr = cast_smem_ptr_to_uint(dst_ptr);
-      cp_async_cg_A(addr, src_ptr, mask);
+      cp_async_cg_A(addr, src_ptr, preds[global_iter]);
     }
     else
     {
-      if (mask)
+      if (preds[global_iter])
         *(uint4 *)dst_ptr = *src_ptr;
     }
   }
@@ -375,6 +375,7 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
   int8_t *B_hoisted = B + cta_offset_n * K + B_hoisted_row * K +
                       B_hoisted_col * PACK_SIZE;
   bool A_g2s_preds[A_total_global_iters];
+  bool B_g2s_preds[B_total_global_iters];
   //debug
   // printf("A: %d ",A_total_global_iters);
   // printf("B: %d ",B_total_global_iters);
@@ -392,6 +393,11 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
   {
     A_g2s_preds[i] = (cta_offset_m + A_hoisted_row + i * A_src_step_m) < M;
   }
+  #pragma unroll
+  for (int i = 0; i < B_total_global_iters; i++)
+  {
+    B_g2s_preds[i] = (cta_offset_n + B_hoisted_col + i) < N;
+  }
   int *C_shared = reinterpret_cast<int *>(mem_shared);
 #pragma unroll
   for (k_0_0_ld = 0; k_0_0_ld < prologue_stages; ++k_0_0_ld)
@@ -401,7 +407,7 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
         cta_offset_m, cta_offset_n, k_0_0_ld, 0, true, A_g2s_preds);
     global_to_share_one_stage_B<CTA_M, CTA_N, CTA_K, CTA_SIZE, 1, STAGES>(
         B_hoisted, B_shared_hoisted + k_0_0_ld * kSmemSizeBPerStage, K,
-        cta_offset_m, cta_offset_n, k_0_0_ld, 0, true);
+        cta_offset_m, cta_offset_n, k_0_0_ld, 0, true, B_g2s_preds);
     if constexpr (STAGES > 1)
       __pipeline_commit();
   }
@@ -470,7 +476,7 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
                                     WARP_K / INTRIN_K, STAGES>(
             B_hoisted, B_shared_hoisted + ld_stage * kSmemSizeBPerStage, K,
             cta_offset_m, cta_offset_n, k_0_0_ld, iter_k,
-            k_0_0_ld < gemm_iters);
+            k_0_0_ld < gemm_iters, B_g2s_preds);
       }
 
       if (iter_k == SHARED_K_ITERS - 2)
@@ -488,7 +494,7 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
                                     WARP_K / INTRIN_K, STAGES>(
             B_hoisted, B_shared_hoisted + ld_stage * kSmemSizeBPerStage, K,
             cta_offset_m, cta_offset_n, k_0_0_ld, iter_k + 1,
-            k_0_0_ld < gemm_iters);
+            k_0_0_ld < gemm_iters, B_g2s_preds);
         if constexpr (STAGES > 1)
         {
           __pipeline_commit();
@@ -626,7 +632,6 @@ void w8a8_gemm_fuse_bias_forward_cuda(torch::Tensor _in_feats,
   return ;
 }
 
-
 template <int CTA_M, int CTA_N, int CTA_K, int WARP_M, int WARP_N, int WARP_K,
           int STAGES>
 __global__ void dense_kernel0(int8_t *__restrict__ A, int8_t *__restrict__ B,
@@ -709,6 +714,12 @@ __global__ void dense_kernel0(int8_t *__restrict__ A, int8_t *__restrict__ B,
   {
     A_g2s_preds[i] = (cta_offset_m + A_hoisted_row + i * A_src_step_m) < M;
   }
+  bool B_g2s_preds[B_total_global_iters];
+  #pragma unroll
+  for (int i = 0; i < B_total_global_iters; i++)
+  {
+    B_g2s_preds[i] = (cta_offset_n + B_hoisted_col + i) < N;
+  }
   int *C_shared = reinterpret_cast<int *>(mem_shared);
 #pragma unroll
   for (k_0_0_ld = 0; k_0_0_ld < prologue_stages; ++k_0_0_ld)
@@ -718,7 +729,7 @@ __global__ void dense_kernel0(int8_t *__restrict__ A, int8_t *__restrict__ B,
         cta_offset_m, cta_offset_n, k_0_0_ld, 0, true, A_g2s_preds);
     global_to_share_one_stage_B<CTA_M, CTA_N, CTA_K, CTA_SIZE, 1, STAGES>(
         B_hoisted, B_shared_hoisted + k_0_0_ld * kSmemSizeBPerStage, K,
-        cta_offset_m, cta_offset_n, k_0_0_ld, 0, true);
+        cta_offset_m, cta_offset_n, k_0_0_ld, 0, true, B_g2s_preds);
     if constexpr (STAGES > 1)
       __pipeline_commit();
   }
@@ -785,7 +796,7 @@ __global__ void dense_kernel0(int8_t *__restrict__ A, int8_t *__restrict__ B,
                                     WARP_K / INTRIN_K, STAGES>(
             B_hoisted, B_shared_hoisted + ld_stage * kSmemSizeBPerStage, K,
             cta_offset_m, cta_offset_n, k_0_0_ld, iter_k,
-            k_0_0_ld < gemm_iters);
+            k_0_0_ld < gemm_iters, B_g2s_preds);
       }
 
       if (iter_k == SHARED_K_ITERS - 2)
@@ -803,7 +814,7 @@ __global__ void dense_kernel0(int8_t *__restrict__ A, int8_t *__restrict__ B,
                                     WARP_K / INTRIN_K, STAGES>(
             B_hoisted, B_shared_hoisted + ld_stage * kSmemSizeBPerStage, K,
             cta_offset_m, cta_offset_n, k_0_0_ld, iter_k + 1,
-            k_0_0_ld < gemm_iters);
+            k_0_0_ld < gemm_iters, B_g2s_preds);
         if constexpr (STAGES > 1)
         {
           __pipeline_commit();
@@ -936,6 +947,58 @@ void w8a8_gemm_forward_cuda(torch::Tensor _in_feats,
     constexpr int WARP_K = 64;
     constexpr int STAGES = 6;
     KERNEL_LAUNCH_CODE
+  }
+  return ;
+}
+
+
+
+
+void w8a8_gemm_fuse_bias_fc1_forward_cuda(torch::Tensor _in_feats,
+  torch::Tensor _kernel,
+  torch::Tensor _wscales,
+  torch::Tensor _ascales,
+  torch::Tensor _out_feats,
+  torch::Tensor _bias)
+{
+int num_in_feats = _in_feats.size(0);
+int num_in_channels = _in_feats.size(1);
+auto in_feats = reinterpret_cast<int8_t *>(_in_feats.data_ptr<int8_t>());
+auto kernel = reinterpret_cast<int8_t *>(_kernel.data_ptr<int8_t>());
+auto wscales = reinterpret_cast<half2 *>(_wscales.data_ptr());
+auto ascales = reinterpret_cast<half *>(_ascales.data_ptr());
+auto bias = reinterpret_cast<half *>(_bias.data_ptr());
+// auto options =
+//     torch::TensorOptions().dtype(torch::kFloat16).device(_in_feats.device());
+// at::Tensor _out_feats =
+//     torch::empty({num_in_feats, _kernel.size(0)}, options);
+int num_out_feats = _out_feats.size(-2);
+int num_out_channels = _out_feats.size(-1);
+
+
+auto out_feats = reinterpret_cast<half *>(_out_feats.data_ptr<at::Half>());
+
+if (num_out_feats > 128)
+  {
+    constexpr int CTA_M = 128;
+    constexpr int CTA_N = 128;
+    constexpr int CTA_K = 64;
+    constexpr int WARP_M = 64;
+    constexpr int WARP_N = 32;
+    constexpr int WARP_K = 64;
+    constexpr int STAGES = 6;
+    KERNEL_LAUNCH_CODE_FUSE_BIAS
+  }
+  else 
+  {
+    constexpr int CTA_M = 64;
+    constexpr int CTA_N = 64;
+    constexpr int CTA_K = 64;
+    constexpr int WARP_M = 32;
+    constexpr int WARP_N = 16;
+    constexpr int WARP_K = 64;
+    constexpr int STAGES = 6;
+    KERNEL_LAUNCH_CODE_FUSE_BIAS
   }
   return ;
 }

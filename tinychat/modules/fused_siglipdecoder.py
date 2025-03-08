@@ -41,7 +41,7 @@ class QuantSiglipEncoder(nn.Module):
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutput]:
         # TODO Find why this code is necessary
-        torch.sum(inputs_embeds != inputs_embeds)
+        torch.sum(inputs_embeds!=inputs_embeds)
         bsz, seqlen, _ = inputs_embeds.shape
         if self.bsz != bsz or self.seqlen != seqlen:
             self.buffer.allocate_activation_buffer(bsz * seqlen)
@@ -68,6 +68,7 @@ class QuantSiglipEncoder(nn.Module):
             hidden_states = encoder_layer(
                 hidden_states, self.buffer, attention_mask, bsz, seqlen
             )
+            # exit(0)
 
         if output_hidden_states:
             encoder_states = encoder_states + (hidden_states.reshape(bsz, seqlen, -1),)
@@ -86,8 +87,9 @@ class QuantSiglipMLP(nn.Module):
         super().__init__()
         self.config = siglipmlp.config
         self.activation_fn = siglipmlp.activation_fn
+        # self.fc1=siglipmlp.fc1.cuda()
         self.fc1 = W8A8OF16LinearDynamicInputScale.from_linear(
-            siglipmlp.fc1, init_only=init_only
+            siglipmlp.fc1, init_only=init_only, fc1=True
         )
         self.fc2 = W8A8OF16LinearDynamicInputScale.from_linear(
             siglipmlp.fc2, init_only=init_only
@@ -108,14 +110,30 @@ class QuantSiglipMLP(nn.Module):
             buffer.quantized_scale_buffer,
             buffer.fc1_buffer,
         )
+        # print(torch.sum(torch.isinf(buffer.fc1_buffer)))
+        # input=buffer.quantized_hidden_states_buffer*buffer.quantized_scale_buffer.reshape(-1,1)
+        # input=input.reshape(15,1024,-1)
+        # buffer.fc1_buffer=self.fc1(input)
+        # torch.save(buffer.fc1_buffer,"/home/yuming/workspace/tinychat2nvila/others/compare/layers/fc1_inf_0_new.pt")
+        
         buffer.actfn_buffer = self.activation_fn(buffer.fc1_buffer)
-        # TODO
         self.invoke_quant(buffer, buffer.actfn_buffer)
+
+        # awq_inference_engine.gelu_and_quant(
+        #             buffer.quantized_mlp_act_buffer,
+        #             buffer.fc1_buffer,
+        #             buffer.quantized_scale_buffer,
+        #             buffer.tmp
+        #         )
+        
         self.fc2(
             buffer.quantized_mlp_act_buffer,
             buffer.quantized_scale_buffer,
             buffer.in_out_fc2_act_buffer,
         )
+        # print(torch.sum(torch.isinf(buffer.in_out_fc2_act_buffer)))
+        # torch.save(buffer.in_out_fc2_act_buffer,"/home/yuming/workspace/tinychat2nvila/others/compare/layers/fc2_inf_0_new.pt")
+        # exit()
 
 @torch.no_grad()
 class QuantSiglipFlashAttention2(nn.Module):
@@ -156,6 +174,7 @@ class QuantSiglipFlashAttention2(nn.Module):
             buffer.quantized_scale_buffer,
             buffer.qkv_proj_act_buffer,
         )
+        #torch.save(buffer.qkv_proj_act_buffer,"/home/yuming/workspace/tinychat2nvila/others/compare/layers/qkv_inf_0.pt")
         q, k, v = buffer.qkv_proj_act_buffer.split(
             [self.embed_dim, self.embed_dim, self.embed_dim], dim=-1
         )
@@ -163,7 +182,7 @@ class QuantSiglipFlashAttention2(nn.Module):
         k = k.reshape(bsz, seqlen, self.num_heads, self.head_dim).contiguous()
         v = v.reshape(bsz, seqlen, self.num_heads, self.head_dim).contiguous()
         attn_output = flash_attn_func(q, k, v, softmax_scale=None, causal=False)
-
+        #torch.save(attn_output,"/home/yuming/workspace/tinychat2nvila/others/compare/layers/attn_output_inf_0.pt")
         attn_output = attn_output.reshape(bsz * seqlen, -1)
 
         self.invoke_quant(buffer, attn_output)
@@ -173,6 +192,7 @@ class QuantSiglipFlashAttention2(nn.Module):
             buffer.quantized_scale_buffer,
             buffer.in_out_fc2_act_buffer,
         )
+        #torch.save(buffer.in_out_fc2_act_buffer,"/home/yuming/workspace/tinychat2nvila/others/compare/layers/o_inf_0.pt")
         # buffer.in_out_fc2_act_buffer=self.out_proj(buffer.in_out_fc2_act_buffer)
 
 @torch.no_grad()

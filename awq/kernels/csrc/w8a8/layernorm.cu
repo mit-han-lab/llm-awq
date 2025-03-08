@@ -41,10 +41,10 @@ __inline__ __device__ Tf compute_layernorm(Tf val, float s_mean, float s_varianc
  * Second computes the variance via Var[x] = E[(x - E[x])²].
  * Third pass computes and writes normed_output
  * For better speedup, we set USE_DIFF_OF_SQUARES to true (may be faster but less accurate):
+ * It turns out the accuracy dosen't drop.
  * First pass (loop) computes the mean and variance via Var[x] = E[x²] - E[x]²
  * Second pass computes and writes normed_output
  * 
- * It turns out the accuracy dosen't drop.
  *
  * use_shmem controls if we cache input values into shared memory
  *
@@ -52,12 +52,12 @@ __inline__ __device__ Tf compute_layernorm(Tf val, float s_mean, float s_varianc
  *           amax per row. A final pass scales to int8 accordingly, and writes output to
  *           normed_output_quant.
  */
-template <typename T, typename scale_type>
+template <typename T, typename scale_type, bool USE_DIFF_OF_SQUARES = true>
 __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, T* normed_output, const float eps,
     int tokens, int hidden_dim, const scale_type* scale_orig_quant_per_tensor, scale_type* scale_orig_quant_per_token,
     int8_t* normed_output_quant, bool use_shmem)
 {
-    constexpr auto num_elems_T = num_elems<T>::value;//1
+    constexpr auto num_elems_T = num_elems<T>::value;
     using int8_packed_t = typename packed_as<int8_t, num_elems_T>::type;
     using float_packed_t = typename packed_as<float, num_elems_T>::type;
     using T_scalar = typename packed_as<T, 1>::type;
@@ -84,22 +84,54 @@ __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, 
         }
         const float_packed_t val_f = cuda_cast<float_packed_t>(val);
         local_sum += cuda_sum<float>(val_f);
-        local_var_sum += cuda_sum<float>(val_f * val_f);
+        if (USE_DIFF_OF_SQUARES)
+        {
+            local_var_sum += cuda_sum<float>(val_f * val_f);
+        }
     }
     //Compute mean
-    float packed[2] = {local_sum, local_var_sum};
-    blockReduceSumV2<float, 2>(packed);
-    mean = packed[0];
-    variance = packed[1];
+    if (USE_DIFF_OF_SQUARES)
+    {
+        float packed[2] = {local_sum, local_var_sum};
+        blockReduceSumV2<float, 2>(packed);
+        mean = packed[0];
+        variance = packed[1];
+    }
+    else
+    {
+        mean = blockReduceSum(local_sum);
+    }
 
     if (threadIdx.x == 0)
     {
         mean = mean / hidden_dim;
         s_mean = mean;
-        variance = (variance / hidden_dim) - (mean * mean); // Var[x] = E[x²] - E[x]²
-        s_variance = rsqrtf(variance + eps);
+        if (USE_DIFF_OF_SQUARES)
+        {
+            variance = (variance / hidden_dim) - (mean * mean); // Var[x] = E[x²] - E[x]²
+            s_variance = rsqrtf(variance + eps);
+        }
     }
     __syncthreads();
+
+
+    if (!USE_DIFF_OF_SQUARES)
+    {
+        for (int i = tidx; i < n_elems; i += blockDim.x)
+        {
+            const T val = use_shmem ? shmem[i] : input[bidx * n_elems + i];
+            float_packed_t diff = cuda_cast<float_packed_t>(val); // - s_mean;
+            local_var_sum += cuda_sum<float>(diff * diff);
+        }
+        variance = blockReduceSum(local_var_sum);
+
+        if (threadIdx.x == 0)
+        {
+            s_variance = rsqrtf(variance / hidden_dim + eps);
+        }
+        __syncthreads();
+    }
+
     // Compute LN and Quantize
     const bool with_per_token_scaling = scale_orig_quant_per_token != nullptr;
     const bool with_per_tensor_scaling = scale_orig_quant_per_tensor != nullptr;
@@ -168,7 +200,7 @@ void rms_norm_general(torch::Tensor &out,    // [..., hidden_size]
   int hidden_size = input.size(-1);
   int num_tokens = input.numel() / hidden_size;
   dim3 grid(num_tokens);
-  dim3 block(std::min(hidden_size/2, 1024));//Prevent thread idling when the embedding size is greater than 1024 and not an integer multiple of it.
+  dim3 block(std::min(hidden_size, 128));//Reduce the idle probability of threads
   block.x = 32 * ((block.x + 31) / 32);
   
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();

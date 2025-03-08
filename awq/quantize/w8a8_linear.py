@@ -74,6 +74,7 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         out_features: int,
         bias: bool = True,
         scale: Union[torch.tensor, float] = 1.0,
+        fc1=False,# For siglip fc1
         params_dtype: Optional[torch.dtype] = None,
     ):
         super().__init__(
@@ -83,8 +84,38 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
             scale=scale,
             params_dtype=params_dtype,
         )
-
-    def apply_weights(
+        if bias:
+            if fc1:
+                self.apply_weights = self.apply_weights_fc1
+            else:
+                self.apply_weights = self.apply_weights_bias
+        else:
+            self.apply_weights = self.apply_weights_no_bias
+    
+    #W bias.Fused and adapted to match fc1's shape in SigLIP  
+    def apply_weights_fc1(
+        self,
+        # [batch, tokens, channels]
+        x: torch.Tensor,
+        # [batch * tokens]
+        input_scale: torch.Tensor,
+        output_buffer: torch.Tensor,
+        bias: torch.Tensor = None,
+    ): 
+        x_shape = x.shape
+        if len(x.shape) > 2:
+            assert 0, "Not implemented"
+            x = x.view(-1, x_shape[-1])
+        #Fake now
+        awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda(
+        x, self.weight, self.dequant_scale, input_scale, output_buffer, bias
+        )                    
+        if len(x.shape) > 2:
+            assert 0, "Not implemented 2"
+            output_buffer = output_buffer.view(*x_shape[:-1], -1)
+    
+    #W bias. Fused bias and W8A8 GEMM
+    def apply_weights_bias(
         self,
         # [batch, tokens, channels]
         x: torch.Tensor,
@@ -97,25 +128,38 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         if len(x.shape) > 2:
             assert 0, "Not implemented"
             x = x.view(-1, x_shape[-1])
-        if bias is not None:
-            # If use awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda
-            awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda(
-            x, self.weight, self.dequant_scale, input_scale, output_buffer, bias
-            )
-        else:
+        # If use awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda
+        awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda(
+        x, self.weight, self.dequant_scale, input_scale, output_buffer, bias
+        )                    
+        if len(x.shape) > 2:
+            assert 0, "Not implemented 2"
+            output_buffer = output_buffer.view(*x_shape[:-1], -1)
+    
+    #W/H bias. W8A8 GEMM
+    def apply_weights_no_bias(
+            self,
+            # [batch, tokens, channels]
+            x: torch.Tensor,
+            # [batch * tokens]
+            input_scale: torch.Tensor,
+            output_buffer: torch.Tensor,
+            bias: torch.Tensor = None,
+        ):
+            x_shape = x.shape
+            if len(x.shape) > 2:
+                assert 0, "Not implemented"
+                x = x.view(-1, x_shape[-1])
             # If use awq_inference_engine.w8a8_gemm_forward_cuda
             awq_inference_engine.w8a8_gemm_forward_cuda(
                 x, self.weight, self.dequant_scale, input_scale, output_buffer
             )
-        
-        
-        if len(x.shape) > 2:
-            assert 0, "Not implemented 2"
-            output_buffer = output_buffer.view(*x_shape[:-1], -1)
+            if len(x.shape) > 2:
+                assert 0, "Not implemented 2"
+                output_buffer = output_buffer.view(*x_shape[:-1], -1)
 
     def forward(self, input_, input_scale, output_buffer):
         # Matrix multiply.
-        # If use awq_inference_engine.w8a8_gemm_forward_cuda
         self.apply_weights(input_, input_scale, output_buffer, self.bias)
 
     @classmethod
@@ -124,11 +168,13 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         linear,
         init_only=False,
         s1_scale=None,
+        fc1=False
     ):
         q_linear = cls(
             linear.in_features,
             linear.out_features,
             linear.bias is not None,
+            fc1=fc1
         )
         # q_linear.weight.data[:, :] = linear.weight.data.clone().half().contiguous().cuda()
         # q_linear.bias = linear.bias.clone().half().contiguous().cuda()
@@ -255,7 +301,6 @@ class FakeW8A8Linear(torch.nn.Module):
         return fake_linear
 
 
-@torch.no_grad
 def fake_quant(model, wbit=8):
     for name, m in tqdm(
         model.named_modules(),
