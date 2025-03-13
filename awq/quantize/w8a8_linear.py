@@ -75,7 +75,7 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         bias: bool = True,
         scale: Union[torch.tensor, float] = 1.0,
         params_dtype: Optional[torch.dtype] = None,
-    ):
+    ):            
         super().__init__(
             in_features=in_features,
             out_features=out_features,
@@ -83,8 +83,13 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
             scale=scale,
             params_dtype=params_dtype,
         )
-
-    def apply_weights(
+        if bias:
+            self.apply_weights = self.apply_weights_bias
+        else:
+            self.apply_weights = self.apply_weights_no_bias
+    
+    #W bias. Fused bias and W8A8 GEMM
+    def apply_weights_bias(
         self,
         # [batch, tokens, channels]
         x: torch.Tensor,
@@ -97,30 +102,39 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         if len(x.shape) > 2:
             assert 0, "Not implemented"
             x = x.view(-1, x_shape[-1])
-        # If use awq_inference_engine.w8a8_gemm_forward_cuda
-        awq_inference_engine.w8a8_gemm_forward_cuda(
-            x, self.weight, self.dequant_scale, input_scale, output_buffer
-        )
-
         # If use awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda
-        # awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda(
-        #     x, self.weight, self.dequant_scale.half(), input_scale.half(), output_buffer, bias
-        # )
+        awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda(
+        x, self.weight, self.dequant_scale, input_scale, output_buffer, bias
+        )                    
         if len(x.shape) > 2:
             assert 0, "Not implemented 2"
             output_buffer = output_buffer.view(*x_shape[:-1], -1)
+    
+    #W/H bias. W8A8 GEMM
+    def apply_weights_no_bias(
+            self,
+            # [batch, tokens, channels]
+            x: torch.Tensor,
+            # [batch * tokens]
+            input_scale: torch.Tensor,
+            output_buffer: torch.Tensor,
+            bias: torch.Tensor = None,
+        ):
+            x_shape = x.shape
+            if len(x.shape) > 2:
+                assert 0, "Not implemented"
+                x = x.view(-1, x_shape[-1])
+            # If use awq_inference_engine.w8a8_gemm_forward_cuda
+            awq_inference_engine.w8a8_gemm_forward_cuda(
+                x, self.weight, self.dequant_scale, input_scale, output_buffer
+            )
+            if len(x.shape) > 2:
+                assert 0, "Not implemented 2"
+                output_buffer = output_buffer.view(*x_shape[:-1], -1)
 
     def forward(self, input_, input_scale, output_buffer):
         # Matrix multiply.
-
-        # If use awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda
-        # self.apply_weights(input_, input_scale, output_buffer, self.bias)
-
-        # If use awq_inference_engine.w8a8_gemm_forward_cuda
-        self.apply_weights(input_, input_scale, output_buffer)
-        output_bias = self.bias
-        if output_bias is not None:
-            output_buffer += output_bias
+        self.apply_weights(input_, input_scale, output_buffer, self.bias)
 
     @classmethod
     def from_linear(
@@ -128,14 +142,13 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         linear,
         init_only=False,
         s1_scale=None,
+        fc1=False,
     ):
         q_linear = cls(
             linear.in_features,
             linear.out_features,
             linear.bias is not None,
         )
-        # q_linear.weight.data[:, :] = linear.weight.data.clone().half().contiguous().cuda()
-        # q_linear.bias = linear.bias.clone().half().contiguous().cuda()
         if init_only:  # just prepare for loading sd
             return q_linear
         if s1_scale is None:
@@ -144,20 +157,17 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
 
         if linear.bias is not None:
             q_linear.bias = linear.bias.clone().half().contiguous().cuda()
-        # q_linear.weight.data[:, :] = linear.weight.data.contiguous()
-        # return q_linear.cuda()
         ## Quantize the weights
-        # Step 1: Quantize the weights to int8
+        # ---- Quantize the weights to int8 ---- #
         linear_weight = linear.weight.data  # OC, IC
         linear_weight = linear_weight.div_(s1_scale.to(linear_weight.device))
         linear_weight = linear_weight.round_().to(torch.int8)
-        # linear_weight[linear_weight==-128]=-127
-
-        q_linear.weight.data[:, :] = linear_weight.contiguous().cuda()
+            
+        q_linear.weight.data[:, :] = linear_weight.half().contiguous().cuda()
 
         # ---- Pack the scales ---- #
         q_linear.dequant_scale.data[:] = (
-            s1_scale.reshape(linear.out_features).half().contiguous().cuda()
+            s1_scale.reshape(-1).half().contiguous().cuda()
         )
         return q_linear.cuda()
 
@@ -175,8 +185,6 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
             q.out_features + k.out_features + v.out_features,
             q.bias is not None,
         )
-        # q_linear.weight.data[:, :] = linear.weight.data.clone().half().contiguous().cuda()
-        # q_linear.bias = linear.bias.clone().half().contiguous().cuda()
         if init_only:  # just prepare for loading sd
             return q_linear
         weight = torch.cat([q.weight.data, k.weight.data, v.weight.data], dim=0)
@@ -188,20 +196,16 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         if q.bias is not None:
             bias = torch.cat([q.bias, k.bias, v.bias], dim=0)
             q_linear.bias = bias.clone().half().contiguous().cuda()
-        # q_linear.weight.data[:, :] = linear.weight.data.contiguous()
-        # return q_linear.cuda()
-        ## Quantize the weights
-        # Step 1: Quantize the weights to int8
+        # ---- Quantize the weights to int8 ---- #
         weight = weight.div_(s1_scale.to(weight.device))
         weight = weight.round_().to(torch.int8)
-        # linear_weight[linear_weight==-128]=-127
 
         q_linear.weight.data[:, :] = weight.contiguous().cuda()
 
         # ---- Pack the scales ---- #
         q_linear.dequant_scale.data[:] = (
             s1_scale.reshape(q.out_features + k.out_features + v.out_features)
-            # .half()
+            .half()
             .contiguous().cuda()
         )
         return q_linear.cuda()
@@ -230,15 +234,7 @@ class FakeW8A8Linear(torch.nn.Module):
         scales = input.abs().max(dim=-1, keepdim=True)[0]
         scales.clamp_(min=1e-5).div_(self.maxv)
         input.div_(scales).round_().mul_(scales)
-        # print(scales.abs().max(dim=-1, keepdim=True)[0].reshape(-1))
-        # print(torch.sum(input==0)/input.numel())
         output = torch.functional.F.linear(input, self.weight, self.bias)
-        # output=input.float()@(self.weight.float().T)
-        # # print(self.weight)
-        # if self.bias is not None:
-        #     output=output+self.bias.float()
-        # # print(output[0,0])
-        # # print(torch.sum(torch.isnan(output))/output.numel())
         return output
 
     @classmethod
@@ -267,7 +263,6 @@ class FakeW8A8Linear(torch.nn.Module):
         return fake_linear
 
 
-@torch.no_grad
 def fake_quant(model, wbit=8):
     for name, m in tqdm(
         model.named_modules(),

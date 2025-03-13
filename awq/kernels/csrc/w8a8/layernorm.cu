@@ -1,5 +1,5 @@
-// Inspired by TRT-LLM.
-// Modified by Shang Yang and Haotian Tang.
+// Inspired by QServe https://github.com/mit-han-lab/qserve/tree/main.
+// Modified by Yuming Lou.
 // @article{lin2024awq,
 //   title={AWQ: Activation-aware Weight Quantization for On-Device LLM Compression and Acceleration},
 //   author={Lin, Ji and Tang, Jiaming and Tang, Haotian and Yang, Shang and Chen, Wei-Ming and Wang, Wei-Chen and Xiao, Guangxuan and Dang, Xingyu and Gan, Chuang and Han, Song},
@@ -10,7 +10,6 @@
 // }
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
-
 #include "dispatch_utils.h"
 #include "utils.cuh"
 #include "reduction_utils.cuh"
@@ -41,10 +40,11 @@ __inline__ __device__ Tf compute_layernorm(Tf val, float s_mean, float s_varianc
  * First pass (loop) computes the mean.
  * Second computes the variance via Var[x] = E[(x - E[x])²].
  * Third pass computes and writes normed_output
- *
- * with USE_DIFF_OF_SQUARES set to true (may be faster but less accurate):
+ * For better speedup, we set USE_DIFF_OF_SQUARES to true (may be faster but less accurate):
+ * It turns out the accuracy dosen't drop.
  * First pass (loop) computes the mean and variance via Var[x] = E[x²] - E[x]²
  * Second pass computes and writes normed_output
+ * 
  *
  * use_shmem controls if we cache input values into shared memory
  *
@@ -52,7 +52,7 @@ __inline__ __device__ Tf compute_layernorm(Tf val, float s_mean, float s_varianc
  *           amax per row. A final pass scales to int8 accordingly, and writes output to
  *           normed_output_quant.
  */
-template <typename T, typename scale_type, bool USE_DIFF_OF_SQUARES = false>
+template <typename T, typename scale_type, bool USE_DIFF_OF_SQUARES = true>
 __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, T* normed_output, const float eps,
     int tokens, int hidden_dim, const scale_type* scale_orig_quant_per_tensor, scale_type* scale_orig_quant_per_token,
     int8_t* normed_output_quant, bool use_shmem)
@@ -74,7 +74,6 @@ __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, 
     float variance = 0.0f;
     float local_sum = 0.0f;
     float local_var_sum = 0.0f;
-
     const int n_elems = hidden_dim / num_elems_T;
     for (int i = tidx; i < n_elems; i += blockDim.x)
     {
@@ -83,7 +82,6 @@ __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, 
         {
             shmem[i] = val;
         }
-
         const float_packed_t val_f = cuda_cast<float_packed_t>(val);
         local_sum += cuda_sum<float>(val_f);
         if (USE_DIFF_OF_SQUARES)
@@ -91,7 +89,7 @@ __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, 
             local_var_sum += cuda_sum<float>(val_f * val_f);
         }
     }
-
+    //Compute mean
     if (USE_DIFF_OF_SQUARES)
     {
         float packed[2] = {local_sum, local_var_sum};
@@ -116,12 +114,13 @@ __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, 
     }
     __syncthreads();
 
+
     if (!USE_DIFF_OF_SQUARES)
     {
         for (int i = tidx; i < n_elems; i += blockDim.x)
         {
             const T val = use_shmem ? shmem[i] : input[bidx * n_elems + i];
-            float_packed_t diff = cuda_cast<float_packed_t>(val) - s_mean;
+            float_packed_t diff = cuda_cast<float_packed_t>(val); // - s_mean;
             local_var_sum += cuda_sum<float>(diff * diff);
         }
         variance = blockReduceSum(local_var_sum);
@@ -133,6 +132,7 @@ __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, 
         __syncthreads();
     }
 
+    // Compute LN and Quantize
     const bool with_per_token_scaling = scale_orig_quant_per_token != nullptr;
     const bool with_per_tensor_scaling = scale_orig_quant_per_tensor != nullptr;
     const float_packed_t scale_orig_quant
@@ -186,51 +186,21 @@ __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, 
         }
     }
 }
-}
 
-// TODO(woosuk): Further optimize this kernel.
-template <typename scalar_t, typename out_type, bool use_quant>
-__global__ void
-rms_norm_kernel(out_type *__restrict__ out,         // [..., hidden_size]
-                const scalar_t *__restrict__ input, // [..., hidden_size]
-                const scalar_t *__restrict__ weight, // [hidden_size]
-                const float epsilon, const int num_tokens,
-                const int hidden_size) {
-  __shared__ float s_variance;
-  float variance = 0.0f;
 
-  for (int idx = threadIdx.x; idx < hidden_size; idx += blockDim.x) {
-    const float x = (float)input[blockIdx.x * hidden_size + idx];
-    variance += x * x;
-  }
-  variance = blockReduceSum<float>(variance);
-  if (threadIdx.x == 0) {
-    s_variance = rsqrtf(variance / hidden_size + epsilon);
-  }
-  __syncthreads();
-
-  for (int idx = threadIdx.x; idx < hidden_size; idx += blockDim.x) {
-    float x = (float)input[blockIdx.x * hidden_size + idx];
-    if constexpr (use_quant) {
-      out[blockIdx.x * hidden_size + idx] = float_to_int8_rn(
-        ((float)(x * s_variance)) * (float)(weight[idx]));
-    } else {
-      out[blockIdx.x * hidden_size + idx] =
-        ((scalar_t)(x * s_variance)) * weight[idx];
-    }
-  }
-}
+} // namespace vllm
 
 void rms_norm_general(torch::Tensor &out,    // [..., hidden_size]
               torch::Tensor &input,  // [..., hidden_size]
               torch::Tensor &weight, // [hidden_size]
+              torch::Tensor &bias, // [hidden_size]
               torch::Tensor &scaling, // [tokens] or [1]
               float epsilon,
-              bool use_per_token_quant) {
+              bool use_per_token_quant = true) {
   int hidden_size = input.size(-1);
   int num_tokens = input.numel() / hidden_size;
   dim3 grid(num_tokens);
-  dim3 block(std::min(hidden_size, 1024));
+  dim3 block(std::min(hidden_size, 128));//Reduce the idle probability of threads
   block.x = 32 * ((block.x + 31) / 32);
   
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
@@ -240,7 +210,8 @@ void rms_norm_general(torch::Tensor &out,    // [..., hidden_size]
       // per-token
       vllm::generalLayerNorm<T, at::Half><<<grid, block, 0, stream>>>(
         reinterpret_cast<T*>(input.data_ptr<scalar_t>()), 
-        reinterpret_cast<T*>(weight.data_ptr<scalar_t>()), nullptr,
+        reinterpret_cast<T*>(weight.data_ptr<scalar_t>()), 
+        reinterpret_cast<T*>(bias.data_ptr<scalar_t>()),
         nullptr, epsilon, num_tokens, hidden_size, nullptr, scaling.data_ptr<at::Half>(),
         out.data_ptr<int8_t>(), false
       );

@@ -11,10 +11,19 @@
 
 #include <torch/extension.h>
 #include <cuda_fp16.h>
-void rms_norm_general(torch::Tensor &out,    // [..., hidden_size]
-              torch::Tensor &input,  // [..., hidden_size]
-              torch::Tensor &weight, // [hidden_size]
-              torch::Tensor &scaling, // [tokens] or [1]
-              float epsilon,
-              bool use_per_token_quant);
+// Inspired by vLLM-SmoothQuant: https://github.com/vllm-project/vllm/pull/1112.
+#include <torch/extension.h>
+
+
+void gelu_and_quant(torch::Tensor &out,   // [..., d]
+                                torch::Tensor &input, // [..., d]
+                                torch::Tensor &scale_out, // [num_tokens]
+                                torch::Tensor &tmp // [num_tokens, d]
+);
+
+torch::Tensor silu_and_mul(torch::Tensor &input  // [..., 2 * d]
+);
+
+
+        
 
