@@ -88,7 +88,7 @@ void gelu_and_quant(
   int64_t num_tokens = input.numel() / input.size(-1);
   int d = input.size(-1);
   dim3 grid(num_tokens);
-  dim3 block(std::min(d, 1024));
+  dim3 block(std::min(d, 128));
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
   vllm::gelu_and_quant_kernel<half, true><<<grid, block, 0, stream>>>(
       out.data_ptr<int8_t>(), reinterpret_cast<half *>(input.data_ptr<at::Half>()), d, reinterpret_cast<half *>(scale_out.data_ptr<at::Half>()),reinterpret_cast<half *>(tmp.data_ptr<at::Half>()));
@@ -131,7 +131,7 @@ torch::Tensor silu_and_mul(
 
 
   dim3 grid(num_tokens);
-  dim3 block(std::min(d, 1024));
+  dim3 block(std::min(d, 256));
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
   VLLM_DISPATCH_FLOATING_TYPES(input.scalar_type(), "silu_and_mul_kernel", [&] {
     vllm::silu_and_mul_kernel<scalar_t><<<grid, block, 0, stream>>>(

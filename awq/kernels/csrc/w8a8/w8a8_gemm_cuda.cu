@@ -1,4 +1,5 @@
-// Implemented by Haotian Tang and Shang Yang.
+// Inspired by QServe https://github.com/mit-han-lab/qserve/tree/main.
+// Modified by Yuming Lou.
 // @article{lin2024awq,
 //   title={AWQ: Activation-aware Weight Quantization for On-Device LLM Compression and Acceleration},
 //   author={Lin, Ji and Tang, Jiaming and Tang, Haotian and Yang, Shang and Chen, Wei-Ming and Wang, Wei-Chen and Xiao, Guangxuan and Dang, Xingyu and Gan, Chuang and Han, Song},
@@ -41,7 +42,7 @@
     return ;                                                           \
   }                                                                              \
   int num_blocks_m = (num_out_feats + CTA_M - 1) / CTA_M;                        \
-  int num_blocks_n = num_out_channels / CTA_N / 1;    \
+  int num_blocks_n = (num_out_channels+ CTA_N - 1) / CTA_N / 1;    \
   const int log_tile = get_log_tile<8>((num_out_feats + CTA_M - 1) / CTA_M);     \
   const int tile_shift = 1 << log_tile;                                          \
   dim3 num_blocks(num_blocks_n *tile_shift,                                      \
@@ -145,7 +146,7 @@ ldmatrix_m8n8_x4_trans_b16(int8_t *shared_warp, int ax0_0, uint32_t addr)
 
 // function from lmdeploy
 __inline__ __device__ void
-cp_async_cg_A(uint32_t smem_int_ptr, const uint4 *__restrict__ src, bool mask)
+cp_async_cg_A(uint32_t smem_int_ptr, const uint4 *__restrict__ src, bool mask)//256 * int8
 {
   const int cp_size = 16;
   asm volatile("{"
@@ -234,7 +235,6 @@ global_to_share_one_stage_B(int8_t *src, int8_t *dst, int global_ncols,
   constexpr int kSmemCol = CTA_K + SMEM_PAD_B;
   int8_t *dst_hoisted = dst;
   int8_t *src_hoisted = src + global_iter_k * CTA_K;
-
 #pragma unroll
   for (int _global_iter = 0; _global_iter < partial_global_iters;
        ++_global_iter)
@@ -326,7 +326,7 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
   constexpr int kSmemSizeBPerStage = CTA_N * kSmemPadKB;
   constexpr int kSmemSizeA = kSmemSizeAPerStage * STAGES;
   constexpr int kSmemSizeB = kSmemSizeBPerStage * STAGES;
-  extern __shared__ int8_t mem_shared[]; //extern: dynamic share, decided in kernel launch; shared: within block
+  extern __shared__ int8_t mem_shared[];
   int8_t *A_shared = mem_shared;
   int8_t *B_shared = mem_shared + kSmemSizeA;
   float *Bias_shared= reinterpret_cast<float*>(mem_shared + kSmemSizeA + kSmemSizeB);
@@ -396,7 +396,7 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
   #pragma unroll
   for (int i = 0; i < B_total_global_iters; i++)
   {
-    B_g2s_preds[i] = (cta_offset_n + B_hoisted_col + i) < N;
+    B_g2s_preds[i] = cta_offset_n + B_hoisted_row + i * B_src_step_k < N;
   }
   int *C_shared = reinterpret_cast<int *>(mem_shared);
 #pragma unroll
@@ -569,7 +569,7 @@ __global__ void dense_kernel0_fuse_bias(int8_t *__restrict__ A, int8_t *__restri
         {
           int row_wb = row_wb_1 + (local_id % 4) / 2 * 8;
           int col_wb = col_wb_1 + (local_id / 4) * 8 + (local_id % 2);
-          if (row_wb < M){           
+          if (row_wb < M && col_wb < N ){           
             float2 wscale = __half22float2(*(wscales + col_wb / 2));
             float ascale = __half2float(ascales[row_wb]);
             float2 psums = make_float2(__int2float_rn(C_warp_local[local_id]), __int2float_rn(C_warp_local[local_id + 1]));
@@ -888,7 +888,8 @@ __global__ void dense_kernel0(int8_t *__restrict__ A, int8_t *__restrict__ B,
         for (int local_id = 0; local_id < OP_M * 16 / WARP_SIZE; local_id += 2)
         {
           int row_wb = row_wb_1 + (local_id % 4) / 2 * 8;
-          if (row_wb < M){
+          int col_wb = col_wb_1 + (local_id / 4) * 8 + (local_id % 2);
+          if (row_wb < M && col_wb < N){
             int col_wb = col_wb_1 + (local_id / 4) * 8 + (local_id % 2);
             float2 wscale = __half22float2(*(wscales + col_wb / 2));
             float ascale = __half2float(ascales[row_wb]);
@@ -947,58 +948,6 @@ void w8a8_gemm_forward_cuda(torch::Tensor _in_feats,
     constexpr int WARP_K = 64;
     constexpr int STAGES = 6;
     KERNEL_LAUNCH_CODE
-  }
-  return ;
-}
-
-
-
-
-void w8a8_gemm_fuse_bias_fc1_forward_cuda(torch::Tensor _in_feats,
-  torch::Tensor _kernel,
-  torch::Tensor _wscales,
-  torch::Tensor _ascales,
-  torch::Tensor _out_feats,
-  torch::Tensor _bias)
-{
-int num_in_feats = _in_feats.size(0);
-int num_in_channels = _in_feats.size(1);
-auto in_feats = reinterpret_cast<int8_t *>(_in_feats.data_ptr<int8_t>());
-auto kernel = reinterpret_cast<int8_t *>(_kernel.data_ptr<int8_t>());
-auto wscales = reinterpret_cast<half2 *>(_wscales.data_ptr());
-auto ascales = reinterpret_cast<half *>(_ascales.data_ptr());
-auto bias = reinterpret_cast<half *>(_bias.data_ptr());
-// auto options =
-//     torch::TensorOptions().dtype(torch::kFloat16).device(_in_feats.device());
-// at::Tensor _out_feats =
-//     torch::empty({num_in_feats, _kernel.size(0)}, options);
-int num_out_feats = _out_feats.size(-2);
-int num_out_channels = _out_feats.size(-1);
-
-
-auto out_feats = reinterpret_cast<half *>(_out_feats.data_ptr<at::Half>());
-
-if (num_out_feats > 128)
-  {
-    constexpr int CTA_M = 128;
-    constexpr int CTA_N = 128;
-    constexpr int CTA_K = 64;
-    constexpr int WARP_M = 64;
-    constexpr int WARP_N = 32;
-    constexpr int WARP_K = 64;
-    constexpr int STAGES = 6;
-    KERNEL_LAUNCH_CODE_FUSE_BIAS
-  }
-  else 
-  {
-    constexpr int CTA_M = 64;
-    constexpr int CTA_N = 64;
-    constexpr int CTA_K = 64;
-    constexpr int WARP_M = 32;
-    constexpr int WARP_N = 16;
-    constexpr int WARP_K = 64;
-    constexpr int STAGES = 6;
-    KERNEL_LAUNCH_CODE_FUSE_BIAS
   }
   return ;
 }

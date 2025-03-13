@@ -74,9 +74,8 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         out_features: int,
         bias: bool = True,
         scale: Union[torch.tensor, float] = 1.0,
-        fc1=False,# For siglip fc1
         params_dtype: Optional[torch.dtype] = None,
-    ):
+    ):            
         super().__init__(
             in_features=in_features,
             out_features=out_features,
@@ -85,34 +84,9 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
             params_dtype=params_dtype,
         )
         if bias:
-            if fc1:
-                self.apply_weights = self.apply_weights_fc1
-            else:
-                self.apply_weights = self.apply_weights_bias
+            self.apply_weights = self.apply_weights_bias
         else:
             self.apply_weights = self.apply_weights_no_bias
-    
-    #W bias.Fused and adapted to match fc1's shape in SigLIP  
-    def apply_weights_fc1(
-        self,
-        # [batch, tokens, channels]
-        x: torch.Tensor,
-        # [batch * tokens]
-        input_scale: torch.Tensor,
-        output_buffer: torch.Tensor,
-        bias: torch.Tensor = None,
-    ): 
-        x_shape = x.shape
-        if len(x.shape) > 2:
-            assert 0, "Not implemented"
-            x = x.view(-1, x_shape[-1])
-        #Fake now
-        awq_inference_engine.w8a8_gemm_fuse_bias_forward_cuda(
-        x, self.weight, self.dequant_scale, input_scale, output_buffer, bias
-        )                    
-        if len(x.shape) > 2:
-            assert 0, "Not implemented 2"
-            output_buffer = output_buffer.view(*x_shape[:-1], -1)
     
     #W bias. Fused bias and W8A8 GEMM
     def apply_weights_bias(
@@ -168,16 +142,13 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         linear,
         init_only=False,
         s1_scale=None,
-        fc1=False
+        fc1=False,
     ):
         q_linear = cls(
             linear.in_features,
             linear.out_features,
             linear.bias is not None,
-            fc1=fc1
         )
-        # q_linear.weight.data[:, :] = linear.weight.data.clone().half().contiguous().cuda()
-        # q_linear.bias = linear.bias.clone().half().contiguous().cuda()
         if init_only:  # just prepare for loading sd
             return q_linear
         if s1_scale is None:
@@ -186,20 +157,17 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
 
         if linear.bias is not None:
             q_linear.bias = linear.bias.clone().half().contiguous().cuda()
-        # q_linear.weight.data[:, :] = linear.weight.data.contiguous()
-        # return q_linear.cuda()
         ## Quantize the weights
-        # Step 1: Quantize the weights to int8
+        # ---- Quantize the weights to int8 ---- #
         linear_weight = linear.weight.data  # OC, IC
         linear_weight = linear_weight.div_(s1_scale.to(linear_weight.device))
         linear_weight = linear_weight.round_().to(torch.int8)
-        # linear_weight[linear_weight==-128]=-127
-
-        q_linear.weight.data[:, :] = linear_weight.contiguous().cuda()
+            
+        q_linear.weight.data[:, :] = linear_weight.half().contiguous().cuda()
 
         # ---- Pack the scales ---- #
         q_linear.dequant_scale.data[:] = (
-            s1_scale.reshape(linear.out_features).half().contiguous().cuda()
+            s1_scale.reshape(-1).half().contiguous().cuda()
         )
         return q_linear.cuda()
 
@@ -217,8 +185,6 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
             q.out_features + k.out_features + v.out_features,
             q.bias is not None,
         )
-        # q_linear.weight.data[:, :] = linear.weight.data.clone().half().contiguous().cuda()
-        # q_linear.bias = linear.bias.clone().half().contiguous().cuda()
         if init_only:  # just prepare for loading sd
             return q_linear
         weight = torch.cat([q.weight.data, k.weight.data, v.weight.data], dim=0)
@@ -230,20 +196,16 @@ class W8A8OF16LinearDynamicInputScale(W8A8OF16LinearStaticScale):
         if q.bias is not None:
             bias = torch.cat([q.bias, k.bias, v.bias], dim=0)
             q_linear.bias = bias.clone().half().contiguous().cuda()
-        # q_linear.weight.data[:, :] = linear.weight.data.contiguous()
-        # return q_linear.cuda()
-        ## Quantize the weights
-        # Step 1: Quantize the weights to int8
+        # ---- Quantize the weights to int8 ---- #
         weight = weight.div_(s1_scale.to(weight.device))
         weight = weight.round_().to(torch.int8)
-        # linear_weight[linear_weight==-128]=-127
 
         q_linear.weight.data[:, :] = weight.contiguous().cuda()
 
         # ---- Pack the scales ---- #
         q_linear.dequant_scale.data[:] = (
             s1_scale.reshape(q.out_features + k.out_features + v.out_features)
-            # .half()
+            .half()
             .contiguous().cuda()
         )
         return q_linear.cuda()

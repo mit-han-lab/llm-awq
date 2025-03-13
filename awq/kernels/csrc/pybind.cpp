@@ -29,7 +29,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("fused_rope_with_pos_forward_func", &fused_rope_with_pos_forward_func,"Fused rope forward function with B,S,D embedding");
     m.def("w8a8_gemm_forward_cuda", &w8a8_gemm_forward_cuda, "our w8a8 gemm kernel");
     m.def("w8a8_gemm_fuse_bias_forward_cuda", &w8a8_gemm_fuse_bias_forward_cuda, "our w8a8 gemm fused bias kernel");
-    m.def("w8a8_gemm_fuse_bias_fc1_forward_cuda", &w8a8_gemm_fuse_bias_fc1_forward_cuda, "our w8a8 gemm fused bias kernel, tailored for fc1 shape in Siglip");
     m.def("invoke_quant", &invoke_quant, "fp16->int8 quantization");
     m.def("rms_norm_general", &rms_norm_general, py::arg("out"), py::arg("input"),
         py::arg("weight"), py::arg("bias"),py::arg("scaling"), py::arg("epsilon"), py::arg("use_per_token_quant") = true,
