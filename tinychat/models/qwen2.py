@@ -22,6 +22,7 @@ from flash_attn import flash_attn_func
 max_batch_size = tinychat.utils.constants.max_batch_size
 max_seq_len = tinychat.utils.constants.max_seq_len
 
+
 class Qwen2RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
         super().__init__()
@@ -447,7 +448,7 @@ class Qwen2ForCausalLM(Qwen2ForCausalLM):
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.config = config
-    
+
     @torch.inference_mode()
     def forward(
         self,
@@ -480,7 +481,7 @@ class Qwen2ForCausalLM(Qwen2ForCausalLM):
         for i in range(10):
             torch.cuda.synchronize()
             tst = time.time()
-            token = self.forward(None, start_pos, inputs_embeds,quant=quant_llm)
+            token = self.forward(None, start_pos, inputs_embeds, quant=quant_llm)
             torch.cuda.synchronize()
             ted = time.time()
         print(

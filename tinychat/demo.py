@@ -84,7 +84,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_type", type=str, default="LLaMa", help="type of the model"
     )
-    parser.add_argument("--dtype", type=str, default="float16", choices=["float16", "bfloat16"])
+    parser.add_argument(
+        "--dtype", type=str, default="float16", choices=["float16", "bfloat16"]
+    )
     parser.add_argument(
         "--model_path",
         type=str,
@@ -152,7 +154,12 @@ if __name__ == "__main__":
         print("=" * 80)
     # TODO (Haotian): a more elegant implementation here.
     # We need to update these global variables before models use them.
-    from tinychat.models import FalconForCausalLM, LlamaForCausalLM, MPTForCausalLM, Qwen2ForCausalLM
+    from tinychat.models import (
+        FalconForCausalLM,
+        LlamaForCausalLM,
+        MPTForCausalLM,
+        Qwen2ForCausalLM,
+    )
 
     def skip(*args, **kwargs):
         pass
@@ -180,7 +187,7 @@ if __name__ == "__main__":
         "llama": LlamaForCausalLM,
         "falcon": FalconForCausalLM,
         "mpt": MPTForCausalLM,
-        "qwen": Qwen2ForCausalLM
+        "qwen": Qwen2ForCausalLM,
     }
 
     if args.precision == "W4A16":
@@ -206,7 +213,11 @@ if __name__ == "__main__":
             torch_dtype=torch_dtype,
             trust_remote_code=True,
         )
-        model = model_type_dict[args.model_type.lower()](config).to(torch_dtype).to(args.device)
+        model = (
+            model_type_dict[args.model_type.lower()](config)
+            .to(torch_dtype)
+            .to(args.device)
+        )
         model.load_state_dict(loaded_model.state_dict())
     # device warm up
     device_warmup(args.device)
@@ -218,7 +229,9 @@ if __name__ == "__main__":
     stream_generator = StreamGenerator
 
     # Optimize AWQ quantized model
-    if args.precision == "W4A16" and (args.model_type.lower() == "llama" or args.model_type.lower() == "qwen"):
+    if args.precision == "W4A16" and (
+        args.model_type.lower() == "llama" or args.model_type.lower() == "qwen"
+    ):
         from tinychat.modules import make_quant_norm, make_quant_attn
 
         if args.flash_attn:

@@ -167,7 +167,9 @@ class QuantLlamaAttention(nn.Module):
 
 
 class QuantLlamaAttentionFused(nn.Module):
-    def __init__(self, hidden_size, num_heads, kv_max_seq_len, qkv_layer, o_proj, dev, args):
+    def __init__(
+        self, hidden_size, num_heads, kv_max_seq_len, qkv_layer, o_proj, dev, args
+    ):
         super().__init__()
 
         self.args = args
@@ -325,7 +327,9 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
 
     """This function is faster than the varlen one but only supports single-batch inference"""
 
-    def __init__(self, hidden_size, num_heads, kv_max_seq_len, qkv_layer, o_proj, dev, args):
+    def __init__(
+        self, hidden_size, num_heads, kv_max_seq_len, qkv_layer, o_proj, dev, args
+    ):
         super().__init__()
 
         self.args = args
@@ -347,8 +351,8 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
 
         self.kv_max_seq_len = kv_max_seq_len
         # following fastertransformer definition
-        #For short seqlence, we use fused kernel to accelerate decoding.
-        if self.kv_max_seq_len <= 8192: 
+        # For short seqlence, we use fused kernel to accelerate decoding.
+        if self.kv_max_seq_len <= 8192:
             self.cache_v = (
                 torch.zeros(
                     (
@@ -377,8 +381,8 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
                 .to(dev)
                 .half()
             )  # added to half
-            self.forward=self.short_forward
-        #For long sequence, we use flash attantion for both prefilling and decoding to avoid OOM.
+            self.forward = self.short_forward
+        # For long sequence, we use flash attantion for both prefilling and decoding to avoid OOM.
         else:
             self.cache_v = (
                 torch.zeros(
@@ -404,7 +408,8 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
                 .to(dev)
                 .half()
             )  # added to half
-            self.forward=self.long_forward
+            self.forward = self.long_forward
+
     def short_forward(
         self,
         x: torch.Tensor,
@@ -412,7 +417,7 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
         freqs: torch.Tensor,
         mask: Optional[torch.Tensor],
         chunk_prefilling: bool = False,
-    ):  
+    ):
         bsz, seqlen, _ = x.shape
         xqkv = self.qkv_proj(x)
         xqkv = xqkv.view(
@@ -524,10 +529,9 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
 
         self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
         self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
-        
+
         keys = self.cache_k[:, 0 : start_pos + seqlen]
         values = self.cache_v[:, 0 : start_pos + seqlen]
-            
 
         output = flash_attn_func(
             q=xq,
@@ -537,7 +541,9 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
         )
         output = output.view(bsz, seqlen, -1)
         return self.o_proj(output)
-def make_quant_attn(model, dev, flash_attn = True):
+
+
+def make_quant_attn(model, dev, flash_attn=True):
     """
     Replace all LlamaAttention modules with QuantLlamaAttention modules, fusing the q, k, v projections.
     """

@@ -48,12 +48,12 @@ def main(args):
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
     tinychat.utils.constants.max_seq_len = args.max_seq_len
-    
+
     # Prepare model
     from tinychat.models.nvila_qwen2 import NVILAQwen2
     from transformers import AutoConfig
     from tinychat.models.qwen2 import Qwen2ForCausalLM
-    
+
     config = AutoConfig.from_pretrained(args.model_path)
     config.resume_path = args.model_path
     if args.quant_llm or args.all:
@@ -73,6 +73,7 @@ def main(args):
             make_fused_mlp,
             make_fused_vision_attn,
         )
+
         model.llm = Qwen2ForCausalLM(model.llm_cfg).half()
         model.llm = load_awq_model(model.llm, args.quant_path, 4, 128, args.device)
         make_quant_attn(model.llm, args.device, True)

@@ -12,7 +12,6 @@ from transformers import AutoConfig
 import tinychat
 
 
-
 def skip(*args, **kwargs):
     pass
 
@@ -74,6 +73,7 @@ def main() -> None:
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
     import tinychat.utils.constants
+
     tinychat.utils.constants.max_seq_len = args.max_seq_len
     from transformers import modeling_utils
 
@@ -93,6 +93,7 @@ def main() -> None:
             make_fused_mlp,
             make_fused_vision_attn,
         )
+
         real_quantize_model_weight(
             model.llm,
             w_bit=4,

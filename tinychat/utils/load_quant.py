@@ -112,7 +112,7 @@ def make_quant_linear(module, names, w_bit, groupsize, device, name=""):
                     tmp.out_features,
                     tmp.bias is not None,
                     device,
-                    dtype=tmp.weight.dtype
+                    dtype=tmp.weight.dtype,
                 ),
             )
     for name1, child in module.named_children():
