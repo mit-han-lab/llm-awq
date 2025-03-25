@@ -102,9 +102,7 @@ class LlamaAttentionFused(nn.Module):
             self.rope_scaling = 1.0
         else:
             self.rope_scaling = 1.0 / self.rope_scaling["factor"]
-
-        # kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
-        kv_max_seq_len = 8192
+        self.kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
         self.q_proj = nn.Linear(
             self.hidden_size,
             self.num_heads * self.head_dim,
@@ -133,7 +131,7 @@ class LlamaAttentionFused(nn.Module):
                     max_batch_size,
                     self.num_key_value_heads,
                     # args.max_position_embeddings,
-                    kv_max_seq_len,
+                    self.kv_max_seq_len,
                     self.head_dim,
                 )
             )
@@ -148,7 +146,7 @@ class LlamaAttentionFused(nn.Module):
                     self.num_key_value_heads,
                     self.head_dim // 8,
                     # args.max_position_embeddings,
-                    kv_max_seq_len,
+                    self.kv_max_seq_len,
                     8,
                 )
             )
