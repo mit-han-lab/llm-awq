@@ -42,7 +42,7 @@ def main():
     parser.add_argument(
         "--max_seq_len",
         type=int,
-        default=2048,
+        default=8192,
         help="maximum sequence length for kv cache",
     )
     parser.add_argument(

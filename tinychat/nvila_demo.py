@@ -7,16 +7,8 @@ from llava import conversation as clib
 from llava.media import Image, Video
 import torch
 from awq.quantize import fake_quant
-from tinychat.models.nvila_qwen2 import NVILAQwen2
 from transformers import AutoConfig
-from tinychat.models.qwen2 import Qwen2ForCausalLM
 from tinychat.utils.load_quant import load_awq_model
-from tinychat.modules import (
-    make_quant_norm,
-    make_quant_attn,
-    make_fused_mlp,
-    make_fused_vision_attn,
-)
 from tinychat.utils.llava_image_processing import (
     load_images,
     vis_images,
@@ -55,8 +47,13 @@ def main(args):
     torch.nn.init.kaiming_normal_ = skip
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
+    tinychat.utils.constants.max_seq_len = args.max_seq_len
 
     # Prepare model
+    from tinychat.models.nvila_qwen2 import NVILAQwen2
+    from transformers import AutoConfig
+    from tinychat.models.qwen2 import Qwen2ForCausalLM
+
     config = AutoConfig.from_pretrained(args.model_path)
     config.resume_path = args.model_path
     if args.quant_llm or args.all:
@@ -70,6 +67,13 @@ def main(args):
         act_scales = torch.load(args.act_scale_path)
         smooth_lm(model.vision_tower, act_scales, 0.3)
     if args.quant_llm or args.all:
+        from tinychat.modules import (
+            make_quant_norm,
+            make_quant_attn,
+            make_fused_mlp,
+            make_fused_vision_attn,
+        )
+
         model.llm = Qwen2ForCausalLM(model.llm_cfg).half()
         model.llm = load_awq_model(model.llm, args.quant_path, 4, 128, args.device)
         make_quant_attn(model.llm, args.device, True)

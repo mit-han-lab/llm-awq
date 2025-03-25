@@ -107,20 +107,20 @@ class QuantSiglipMLP(nn.Module):
             buffer.quantized_scale_buffer,
             buffer.fc1_buffer,
         )
-        #Act & quantization
+        # Act & quantization
         awq_inference_engine.gelu_and_quant(
-                    buffer.quantized_mlp_act_buffer,
-                    buffer.fc1_buffer,
-                    buffer.quantized_scale_buffer,
-                    buffer.tmp
-                )
+            buffer.quantized_mlp_act_buffer,
+            buffer.fc1_buffer,
+            buffer.quantized_scale_buffer,
+            buffer.tmp,
+        )
         # INT8 in, FP16 out
         self.fc2(
             buffer.quantized_mlp_act_buffer,
             buffer.quantized_scale_buffer,
             buffer.in_out_fc2_act_buffer,
         )
-        
+
 
 class QuantSiglipFlashAttention2(nn.Module):
     def __init__(
@@ -182,9 +182,19 @@ class QuantSiglipEncoderLayer(nn.Module):
         super().__init__()
         self.embed_dim = module.embed_dim
         self.self_attn = QuantSiglipFlashAttention2(module.self_attn)
-        self.layer_norm1 = RMSNormGeneral(module.layer_norm1.weight.data, module.layer_norm1.bias.data, module.layer_norm1.eps, True).cuda()
+        self.layer_norm1 = RMSNormGeneral(
+            module.layer_norm1.weight.data,
+            module.layer_norm1.bias.data,
+            module.layer_norm1.eps,
+            True,
+        ).cuda()
         self.mlp = QuantSiglipMLP(module.mlp)
-        self.layer_norm2 = RMSNormGeneral(module.layer_norm2.weight.data, module.layer_norm2.bias.data, module.layer_norm2.eps, True).cuda()
+        self.layer_norm2 = RMSNormGeneral(
+            module.layer_norm2.weight.data,
+            module.layer_norm2.bias.data,
+            module.layer_norm2.eps,
+            True,
+        ).cuda()
         self.quant = self.invoke_quant_norm
 
     def invoke_quant_norm(self, buffer, normfn_output):
@@ -202,13 +212,13 @@ class QuantSiglipEncoderLayer(nn.Module):
         bsz,
         seqlen,
     ) -> Tuple[torch.FloatTensor]:
-        #Attention block
+        # Attention block
         # FP16 in int8 out, layernorm & quantization
         residual = hidden_states
         self.layer_norm1(
             hidden_states.reshape(-1, self.embed_dim),
             buffer.quantized_hidden_states_buffer,
-            buffer.quantized_scale_buffer
+            buffer.quantized_scale_buffer,
         )
 
         # INT8 -> FP16
@@ -222,7 +232,7 @@ class QuantSiglipEncoderLayer(nn.Module):
         self.layer_norm2(
             hidden_states.reshape(-1, self.embed_dim),
             buffer.quantized_hidden_states_buffer,
-            buffer.quantized_scale_buffer
+            buffer.quantized_scale_buffer,
         )
 
         # INT8 -> FP16
@@ -248,8 +258,8 @@ class RMSNormGeneral(nn.Module):
         use_per_token_quant: bool = True,
     ) -> None:
         super().__init__()
-        self.weight = nn.Parameter(weight,requires_grad=False)
-        self.bias = nn.Parameter(bias,requires_grad=False)
+        self.weight = nn.Parameter(weight, requires_grad=False)
+        self.bias = nn.Parameter(bias, requires_grad=False)
         self.variance_epsilon = eps
         self.use_per_token_quant = use_per_token_quant
 
@@ -270,4 +280,3 @@ class RMSNormGeneral(nn.Module):
             self.variance_epsilon,
             self.use_per_token_quant,
         )
-

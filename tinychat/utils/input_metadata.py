@@ -92,7 +92,7 @@ class ActivationBuffer:
             (batched_seq_len), device=self.device, dtype=torch.float16
         )
 
-        #For faster act-quant implementation
+        # For faster act-quant implementation
         self.tmp = torch.empty(
             (batched_seq_len * self.intermediate_size),
             device=self.device,

@@ -162,8 +162,7 @@ class Qwen2AttentionFused(nn.Module):
         self.o_proj = nn.Linear(
             self.num_heads * self.head_dim, self.hidden_size, bias=False
         )
-
-        kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
+        self.kv_max_seq_len = min(max_seq_len, self.max_position_embeddings)
         # following fastertransformer definition
         self.cache_v = (
             torch.zeros(
@@ -171,7 +170,7 @@ class Qwen2AttentionFused(nn.Module):
                     max_batch_size,
                     self.num_key_value_heads,
                     # args.max_position_embeddings,
-                    kv_max_seq_len,
+                    self.kv_max_seq_len,
                     self.head_dim,
                 )
             )
@@ -186,7 +185,7 @@ class Qwen2AttentionFused(nn.Module):
                     self.num_key_value_heads,
                     self.head_dim // 8,
                     # args.max_position_embeddings,
-                    kv_max_seq_len,
+                    self.kv_max_seq_len,
                     8,
                 )
             )
@@ -449,7 +448,7 @@ class Qwen2ForCausalLM(Qwen2ForCausalLM):
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.config = config
-    
+
     @torch.inference_mode()
     def forward(
         self,
@@ -479,14 +478,10 @@ class Qwen2ForCausalLM(Qwen2ForCausalLM):
     def benchmark(self, inputs_embeds, attention_mask, max_output=128, quant_llm=True):
         output_list = []
         start_pos = 0
-        if quant_llm:
-            forwardfunc = self.forward
-        else:
-            forwardfunc = self.forwardfp16
         for i in range(10):
             torch.cuda.synchronize()
             tst = time.time()
-            token = forwardfunc(None, start_pos, inputs_embeds)
+            token = self.forward(None, start_pos, inputs_embeds, quant=quant_llm)
             torch.cuda.synchronize()
             ted = time.time()
         print(

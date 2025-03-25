@@ -9,12 +9,7 @@ import torch
 from awq.quantize import fake_quant
 from awq.quantize.quantizer import real_quantize_model_weight
 from transformers import AutoConfig
-from tinychat.modules import (
-    make_quant_norm,
-    make_quant_attn,
-    make_fused_mlp,
-    make_fused_vision_attn,
-)
+import tinychat
 
 
 def skip(*args, **kwargs):
@@ -70,12 +65,16 @@ def main() -> None:
         "--video_path", type=str, default="../figures/nvila_demo_video.mp4"
     )
     parser.add_argument("--image_path", type=str, default="../figures/vila-logo.jpg")
+    parser.add_argument("--max_seq_len", type=int, default=8192)
     args = parser.parse_args()
 
     torch.nn.init.kaiming_uniform_ = skip
     torch.nn.init.kaiming_normal_ = skip
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
+    import tinychat.utils.constants
+
+    tinychat.utils.constants.max_seq_len = args.max_seq_len
     from transformers import modeling_utils
 
     modeling_utils._init_weights = False
@@ -88,6 +87,13 @@ def main() -> None:
     model = NVILAQwen2(config).half()
     model.llm = model.llm.eval()
     if args.quant_llm or args.all:
+        from tinychat.modules import (
+            make_quant_norm,
+            make_quant_attn,
+            make_fused_mlp,
+            make_fused_vision_attn,
+        )
+
         real_quantize_model_weight(
             model.llm,
             w_bit=4,

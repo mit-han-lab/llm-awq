@@ -167,7 +167,9 @@ class QuantLlamaAttention(nn.Module):
 
 
 class QuantLlamaAttentionFused(nn.Module):
-    def __init__(self, hidden_size, num_heads, qkv_layer, o_proj, dev, args):
+    def __init__(
+        self, hidden_size, num_heads, kv_max_seq_len, qkv_layer, o_proj, dev, args
+    ):
         super().__init__()
 
         self.args = args
@@ -187,7 +189,7 @@ class QuantLlamaAttentionFused(nn.Module):
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
 
-        kv_max_seq_len = min(max_seq_len, args.max_position_embeddings)
+        self.kv_max_seq_len = kv_max_seq_len
 
         # following fastertransformer definition
         self.cache_v = (
@@ -196,7 +198,7 @@ class QuantLlamaAttentionFused(nn.Module):
                     max_batch_size,
                     self.num_key_value_heads,
                     # args.max_position_embeddings,
-                    kv_max_seq_len,
+                    self.kv_max_seq_len,
                     self.head_dim,
                 )
             )
@@ -211,7 +213,7 @@ class QuantLlamaAttentionFused(nn.Module):
                     self.num_key_value_heads,
                     self.head_dim // 8,
                     # args.max_position_embeddings,
-                    kv_max_seq_len,
+                    self.kv_max_seq_len,
                     8,
                 )
             )
@@ -325,7 +327,9 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
 
     """This function is faster than the varlen one but only supports single-batch inference"""
 
-    def __init__(self, hidden_size, num_heads, qkv_layer, o_proj, dev, args):
+    def __init__(
+        self, hidden_size, num_heads, kv_max_seq_len, qkv_layer, o_proj, dev, args
+    ):
         super().__init__()
 
         self.args = args
@@ -345,39 +349,68 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
 
-        # kv_max_seq_len = min(max_seq_len, args.max_position_embeddings)
-        kv_max_seq_len = 8192
+        self.kv_max_seq_len = kv_max_seq_len
         # following fastertransformer definition
-        self.cache_v = (
-            torch.zeros(
-                (
-                    max_batch_size,
-                    self.num_key_value_heads,
-                    # args.max_position_embeddings,
-                    kv_max_seq_len,
-                    self.head_dim,
+        # For short seqlence, we use fused kernel to accelerate decoding.
+        if self.kv_max_seq_len <= 8192:
+            self.cache_v = (
+                torch.zeros(
+                    (
+                        max_batch_size,
+                        self.num_key_value_heads,
+                        # args.max_position_embeddings,
+                        self.kv_max_seq_len,
+                        self.head_dim,
+                    )
                 )
-            )
-            .to(dev)
-            .half()
-        )  # added to half
-        # 8: pack 8 fp16 in FT, if fp32 then use 4
-        self.cache_k = (
-            torch.zeros(
-                (
-                    max_batch_size,
-                    self.num_key_value_heads,
-                    self.head_dim // 8,
-                    # args.max_position_embeddings,
-                    kv_max_seq_len,
-                    8,
+                .to(dev)
+                .half()
+            )  # added to half
+            # 8: pack 8 fp16 in FT, if fp32 then use 4
+            self.cache_k = (
+                torch.zeros(
+                    (
+                        max_batch_size,
+                        self.num_key_value_heads,
+                        self.head_dim // 8,
+                        # args.max_position_embeddings,
+                        kv_max_seq_len,
+                        8,
+                    )
                 )
-            )
-            .to(dev)
-            .half()
-        )  # added to half
+                .to(dev)
+                .half()
+            )  # added to half
+            self.forward = self.short_forward
+        # For long sequence, we use flash attantion for both prefilling and decoding to avoid OOM.
+        else:
+            self.cache_v = (
+                torch.zeros(
+                    (
+                        max_batch_size,
+                        self.kv_max_seq_len,
+                        self.num_key_value_heads,
+                        self.head_dim,
+                    )
+                )
+                .to(dev)
+                .half()
+            )  # added to half
+            self.cache_k = (
+                torch.zeros(
+                    (
+                        max_batch_size,
+                        self.kv_max_seq_len,
+                        self.num_key_value_heads,
+                        self.head_dim,
+                    )
+                )
+                .to(dev)
+                .half()
+            )  # added to half
+            self.forward = self.long_forward
 
-    def forward(
+    def short_forward(
         self,
         x: torch.Tensor,
         start_pos: int,
@@ -466,8 +499,51 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
             output = output.reshape(bsz, 1, -1)
         return self.o_proj(output)
 
+    def long_forward(
+        self,
+        x: torch.Tensor,
+        start_pos: int,
+        freqs: torch.Tensor,
+        mask: Optional[torch.Tensor],
+        chunk_prefilling: bool = False,
+    ):
+        bsz, seqlen, _ = x.shape
+        xqkv = self.qkv_proj(x)
+        xqkv = xqkv.view(
+            bsz,
+            seqlen,
+            self.n_local_heads + self.num_key_value_heads * 2,
+            self.head_dim,
+        )
+        xq = xqkv[:, :, 0 : self.n_local_heads]
+        xk = xqkv[
+            :, :, self.n_local_heads : (self.n_local_heads + self.num_key_value_heads)
+        ]
+        xv = xqkv[:, :, -self.num_key_value_heads :]
 
-def make_quant_attn(model, dev, flash_attn=0):
+        xq = awq_inference_engine.fused_rope_with_pos_forward_func(xq, freqs, True)
+        xk = awq_inference_engine.fused_rope_with_pos_forward_func(xk, freqs, True)
+
+        self.cache_k = self.cache_k.to(xq)
+        self.cache_v = self.cache_v.to(xq)
+
+        self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
+        self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
+
+        keys = self.cache_k[:, 0 : start_pos + seqlen]
+        values = self.cache_v[:, 0 : start_pos + seqlen]
+
+        output = flash_attn_func(
+            q=xq,
+            k=keys,
+            v=values,
+            causal=True,
+        )
+        output = output.view(bsz, seqlen, -1)
+        return self.o_proj(output)
+
+
+def make_quant_attn(model, dev, flash_attn=True):
     """
     Replace all LlamaAttention modules with QuantLlamaAttention modules, fusing the q, k, v projections.
     """
@@ -523,6 +599,7 @@ def make_quant_attn(model, dev, flash_attn=0):
                 attn = QuantLlamaAttentionFusedFlash(
                     m.args.hidden_size,
                     m.args.num_attention_heads,
+                    m.kv_max_seq_len,
                     qkv_layer,
                     m.o_proj,
                     dev,
@@ -532,6 +609,7 @@ def make_quant_attn(model, dev, flash_attn=0):
                 attn = QuantLlamaAttentionFused(
                     m.args.hidden_size,
                     m.args.num_attention_heads,
+                    m.kv_max_seq_len,
                     qkv_layer,
                     m.o_proj,
                     dev,

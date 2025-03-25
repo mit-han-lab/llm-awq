@@ -210,6 +210,7 @@ class Llama3Prompter(BasePrompter):
             system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon
         )
 
+
 class QwenPrompter(BasePrompter):
     def __init__(self):
         system_inst = "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n"
@@ -221,6 +222,7 @@ class QwenPrompter(BasePrompter):
         super().__init__(
             system_inst, role1, role2, sen_spliter, qa_spliter, colon=colon
         )
+
 
 class LlavaLlamaPrompter(BasePrompter):
     def __init__(self):
@@ -348,7 +350,7 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
         # return FalconPrompter()
         return FalconSimplePrompter()
     elif "qwen" in model_path.lower():
-            return QwenPrompter()
+        return QwenPrompter()
     elif model_type.lower() == "mpt":
         if "mpt" and "chat" in model_path.lower():
             return MPTChatPrompter()

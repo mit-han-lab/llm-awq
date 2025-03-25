@@ -87,8 +87,11 @@ def NVILAStreamGenerator(
             token = int(torch.argmax(last_token_logits))
         else:
             probs = torch.softmax(last_token_logits.float(), dim=-1)
-            if torch.any(torch.isinf(probs)):
-                print("Error: Invalid probabilities detected (Inf exists). Exiting...")
+            if torch.any(torch.isinf(probs)) or torch.any(torch.isnan(probs)):
+                print(
+                    "[Error] Invalid probabilities detected (Inf/Nan exists). Saving the tensor and exiting..."
+                )
+                torch.save(last_token_logits, "last_token_logits.pt")
                 exit()
             token = int(torch.multinomial(probs, num_samples=1))
         output_ids.append(token)
