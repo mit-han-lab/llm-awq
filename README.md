@@ -52,7 +52,7 @@ Check out [TinyChat](tinychat), which offers a turn-key solution for **on-device
 
 
 ## News
-- [2025/04] 🔥 AWQ now supports DeepSeek-R1-Distilled models. Try our example [here](https://github.com/mit-han-lab/llm-awq/blob/main/scripts/DeepSeek-R1-Distill_example.sh)!
+- [2025/04] 🔥 AWQ now supports DeepSeek-R1-Distilled models. Try our example [here](https://github.com/mit-han-lab/llm-awq/blob/main/scripts/DeepSeek_R1_Distill_example.sh)!
 - [2025/02] AWQ now supports BF16 precision. See example [here](https://github.com/mit-han-lab/llm-awq/blob/main/scripts/qwen2.5_example.sh).
 - [2024/10] 🔥⚡ Explore advancements in [TinyChat 2.0](./tinychat), the latest version with significant advancements in prefilling speed of Edge LLMs and VLMs, **1.5-1.7x** faster than the previous version of TinyChat. Please refer to the [README](./tinychat/README.md) and [blog](https://hanlab.mit.edu/blog/tinychat20) for more details. 
 - [2024/05] 🏆 AWQ receives the **Best Paper Award** at **MLSys 2024**. 🎉 
