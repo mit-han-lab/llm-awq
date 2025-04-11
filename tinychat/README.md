@@ -4,6 +4,10 @@ We introduce TinyChat, a cutting-edge chatbot interface designed for lightweight
 
 The current release supports:
 
+- DeepSeek-R1-Distill-Qwen-1.5B/7B
+
+- DeepSeek-R1-Distill-Llama-8B
+
 - Llama-3-8B/70B-instruct;
 
 - NVILA-3B/8B;
@@ -302,6 +306,17 @@ AWQ also achieves decent performance on the Visual Language Models. We evaluate 
 | FP16      | 84.3  | 64.6 | 62.2   | 87.2  | 73.6  | 87.3 | 1726.82 | 82.4 | 80.2   | 69.1 |
 | AWQ-INT4   | 84.1  | 64.4 | 61.3   | 86.7  | 73.2  | 88.2 | 1714.79 | 83.2 | 79.6   | 68.9 | 
 
+AWQ has also demonstrated impressive performance on inference benchmarks, maintaining strong accuracy across a range of reasoning tasks.
+
+| DeepSeek-R1-Distill-Llama-8B | WikiText perplexity | AIME 2024 | Math-500 | 
+| ---------------------------- |:-------------------:|:-------------------:|:-------------------:|
+| FP16       | 13.13 | 43.33% | 83.00% |
+| AWQ-INT4   | 13.84 | 43.33% | 84.40% |
+
+| DeepSeek-R1-Distill-Qwen-7B | WikiText perplexity | AIME 2024 | Math-500 | 
+| --------------------------- |:-------------------:|:-------------------:|:-------------------:|
+| FP16       | 25.06 | 53.33% | 91.40% |
+| AWQ-INT4   | 27.45 | 53.33% | 89.60% |
 
 ## Usage
 
