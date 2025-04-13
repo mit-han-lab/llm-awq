@@ -1,4 +1,4 @@
-MODEL=qwem2.5-7b
+MODEL=qwen2.5-7b
 
 # run AWQ search (optional; we provided the pre-computed results)
 python -m awq.entry --model_path /dataset/models/$MODEL \
