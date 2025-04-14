@@ -4,7 +4,6 @@ import torch.nn as nn
 from torch.nn import functional as F
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
-    LlamaRotaryEmbedding,
     apply_rotary_pos_emb,
 )
 from typing import Optional
