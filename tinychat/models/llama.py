@@ -124,6 +124,8 @@ class LlamaAttentionFused(nn.Module):
             bias=False,
         )
 
+        max_batch_size = tinychat.utils.constants.max_batch_size
+
         # following fastertransformer definition
         self.cache_v = (
             torch.zeros(
