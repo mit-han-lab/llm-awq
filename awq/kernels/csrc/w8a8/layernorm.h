@@ -11,7 +11,7 @@
 
 #include <torch/extension.h>
 #include <cuda_fp16.h>
-void rms_norm_general(torch::Tensor &out,    // [..., hidden_size]
+void layer_norm_general(torch::Tensor &out,    // [..., hidden_size]
               torch::Tensor &input,  // [..., hidden_size]
               torch::Tensor &weight, // [hidden_size]
               torch::Tensor &bias, // [hidden_size]
