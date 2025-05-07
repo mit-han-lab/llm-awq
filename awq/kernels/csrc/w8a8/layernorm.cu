@@ -190,7 +190,7 @@ __global__ void generalLayerNorm(const T* input, const T* gamma, const T* beta, 
 
 } // namespace vllm
 
-void rms_norm_general(torch::Tensor &out,    // [..., hidden_size]
+void layer_norm_general(torch::Tensor &out,    // [..., hidden_size]
               torch::Tensor &input,  // [..., hidden_size]
               torch::Tensor &weight, // [hidden_size]
               torch::Tensor &bias, // [hidden_size]
