@@ -145,8 +145,9 @@ The detailed support list:
 
 | Models | Sizes                       | INT4-g128 | INT3-g128 |
 | ------ | --------------------------- | --------- | --------- |
-| [DeepSeek-R1-Distill](/scripts/DeepSeek_R1_Distill_example.sh) | 8B |  ✅         |         |
+| [DeepSeek-R1-Distill](/scripts/DeepSeek_R1_Distill_example.sh) | 1.5B/7B/8B |  ✅         |         |
 | [Qwen-2.5](/scripts/qwen_example.sh) | 7B/72B            | ✅         |          |
+| [NVILA](/scripts/nvila_example.sh) | 3B/8B |  ✅         |         |
 | [VILA-1.5](/scripts/vila15_example.sh)  | 3B/8B/13B/40B  | ✅         | ✅        |
 | [Llama3](/scripts/llama_example.sh)  | 8B/70B  | ✅         | ✅        |
 | [VILA](/scripts/vila_example.sh)    | 7B/13B                     | ✅         |           |
