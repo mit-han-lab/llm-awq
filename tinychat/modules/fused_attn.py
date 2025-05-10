@@ -190,6 +190,7 @@ class QuantLlamaAttentionFused(nn.Module):
         self.o_proj = o_proj
 
         self.kv_max_seq_len = kv_max_seq_len
+        max_batch_size = tinychat.utils.constants.max_batch_size
 
         # following fastertransformer definition
         self.cache_v = (
@@ -350,6 +351,7 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
         self.o_proj = o_proj
 
         self.kv_max_seq_len = kv_max_seq_len
+        max_batch_size = tinychat.utils.constants.max_batch_size
         # following fastertransformer definition
         # For short seqlence, we use fused kernel to accelerate decoding.
         if self.kv_max_seq_len <= 8192:

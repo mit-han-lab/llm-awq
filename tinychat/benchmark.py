@@ -49,6 +49,12 @@ def main():
         "--max_batch_size", type=int, default=1, help="maximum batch size for kv cache"
     )
     parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="batch size for inference",
+    )
+    parser.add_argument(
         "--flash_attn",
         action="store_true",
         help="whether to use flash attention",
@@ -98,6 +104,9 @@ def main():
     tinychat.utils.constants.max_seq_len = args.max_seq_len
     from tinychat.models import FalconForCausalLM, LlamaForCausalLM, MPTForCausalLM
     from tinychat.models.vila_llama import VilaLlamaForCausalLM
+
+    assert args.batch_size == args.max_batch_size
+    assert (args.max_batch_size == 1) or ("llama" in args.model_type.lower()), "We only support batch eval for Llama for now"
 
     modeling_utils._init_weights = False
     torch.nn.init.kaiming_uniform_ = skip
@@ -266,7 +275,7 @@ def main():
 
         # warming up
         input_ids = [1 for _ in range(2048)]
-        inputs = torch.as_tensor([input_ids], device=device)
+        inputs = torch.as_tensor([input_ids for _ in range(args.batch_size)], device=device)
         out = model(
             inputs,
             start_pos=0,
@@ -286,7 +295,9 @@ def main():
                         start_pos = 0
                         torch.cuda.synchronize()
                         t_st = time.time()
-                        inputs = torch.as_tensor([input_ids], device=device)
+                        inputs = torch.as_tensor(
+                            [input_ids for _ in range(args.batch_size)],
+                            device=device)
                         out = model(
                             inputs,
                             start_pos=start_pos,
@@ -296,7 +307,7 @@ def main():
                         start_pos += inputs.shape[1]
                         torch.cuda.synchronize()
                         t_ed = time.time()
-                        token = torch.argmax(out, keepdim=True)[0]
+                        token = torch.argmax(out, -1, keepdim=True)[:, :, 0]
                         time_lis.append(t_ed - t_st)
                         if args.verbose:
                             print(i, t_ed - t_st)
@@ -314,12 +325,12 @@ def main():
                             quant=args.precision in ["W4A16"],
                         )
                         start_pos += 1
-                        token = torch.argmax(token, keepdim=True)[0]
+                        token = torch.argmax(token, -1, keepdim=True)[:, :, 0]
                         torch.cuda.synchronize()
                     t_ed = time.time()
                     time_lis.append(t_ed - t_st)
                     print(
-                        f"Decoding throughput: {token_num/sum(time_lis):.5f} token/s."
+                        f"Decoding throughput: {token_num * args.batch_size / sum(time_lis):.5f} token/s."
                     )
                     print("-" * 80)
         else:
