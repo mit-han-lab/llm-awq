@@ -1,7 +1,8 @@
 import argparse
 
 from termcolor import colored
-
+from huggingface_hub import hf_hub_download
+import os
 import llava
 from llava import conversation as clib
 from llava.media import Image, Video
@@ -34,9 +35,30 @@ import tinychat.utils.constants
 from tinychat.stream_generators.NVILA_stream_gen import NVILAStreamGenerator
 from tinychat.utils.conversation_utils import gen_params, stream_output, TimeStats
 
-import os
-
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+def download_model_file(
+    repo_id: str = "Efficient-Large-Model/NVILA-AWQ",
+    filename: str = None,
+    local_dir: str = "./hf_cache",      
+    force_download: bool = False,         
+) -> str:
+    os.makedirs(local_dir, exist_ok=True)
+    local_path = os.path.join(local_dir, filename)
+    if force_download or not os.path.exists(local_path):
+        print(f"Downloading {filename} from {repo_id}...")
+        hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            local_dir=local_dir,
+            local_dir_use_symlinks=False,  
+            resume_download=True,       
+            force_download=force_download,
+        )
+        print(f"File saved to: {local_path}")
+    
+    return local_path
+
 
 
 def main(args):
@@ -63,7 +85,7 @@ def main(args):
 
     if args.smooth_VT or args.all:
         from awq.quantize import smooth_lm
-
+        args.act_scale_path=download_model_file(filename=args.act_scale_path)
         act_scales = torch.load(args.act_scale_path)
         smooth_lm(model.vision_tower, act_scales, 0.3)
     if args.quant_llm or args.all:
@@ -73,7 +95,7 @@ def main(args):
             make_fused_mlp,
             make_fused_vision_attn,
         )
-
+        args.quant_path=download_model_file(filename=args.quant_path)
         model.llm = Qwen2ForCausalLM(model.llm_cfg).half()
         model.llm = load_awq_model(model.llm, args.quant_path, 4, 128, args.device)
         make_quant_attn(model.llm, args.device, True)
