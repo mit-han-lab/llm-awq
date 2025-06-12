@@ -240,7 +240,7 @@ if __name__ == "__main__":
             make_quant_attn(model, args.device)
         make_quant_norm(model)
     model(
-        torch.randint(0, 1000, (1, 4096), dtype=torch.int, device="cuda:0"),
+        torch.randint(0, 1000, (1, 512), dtype=torch.int, device="cuda:0"),
         0,
         quant=args.precision == "W4A16",
     )
