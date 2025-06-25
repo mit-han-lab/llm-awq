@@ -81,6 +81,7 @@ def StreamGenerator(
             and "mpt" not in model.__class__.__name__.lower()
             and "falcon" not in model.__class__.__name__.lower()
             and "qwen" not in model.__class__.__name__.lower()
+            and "internvl" not in model.__class__.__name__.lower()
         ):
             if i == 0:  # Context Stage
                 # out = model(inputs, use_cache=True)
@@ -99,6 +100,7 @@ def StreamGenerator(
             if (
                 "llama" in model.__class__.__name__.lower()
                 or "qwen" in model.__class__.__name__.lower()
+                or "internvl" in model.__class__.__name__.lower()
             ) and not quant_llm:
                 out = model(
                     inputs,

@@ -36,7 +36,7 @@ from tinychat.utils.conversation_utils import gen_params, stream_output, TimeSta
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 def main(args):

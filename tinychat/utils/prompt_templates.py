@@ -349,7 +349,7 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
     elif model_type.lower() == "falcon":
         # return FalconPrompter()
         return FalconSimplePrompter()
-    elif "qwen" in model_path.lower():
+    elif "qwen" in model_path.lower() or "qwen" in model_type.lower() or "internvl3" in model_type.lower():
         return QwenPrompter()
     elif model_type.lower() == "mpt":
         if "mpt" and "chat" in model_path.lower():
@@ -370,8 +370,8 @@ def get_stop_token_ids(model_type, model_path=""):
             # llama3
             return [128001, 128009]
         return []
-    elif model_type.lower() == "qwen":
-        return [151645]
+    elif model_type.lower() == "qwen" or model_type.lower() == "internvl3":
+        return [151643, 151645]
     elif model_type.lower() == "falcon":
         return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     elif model_type.lower() == "mpt":
