@@ -32,9 +32,7 @@ from .qwen2 import Qwen2ForCausalLM
 from .llama import LlamaForCausalLM
 
 try:
-    from flash_attn.bert_padding import pad_input, unpad_input
-    from flash_attn.flash_attn_interface import \
-        flash_attn_varlen_qkvpacked_func
+    import flash_attn
     has_flash_attn = True
 except ImportError:
     print('FlashAttention2 is not installed.')
@@ -129,6 +127,18 @@ class InternVL3(PreTrainedModel):
         else:
             x = x.permute(0, 2, 1, 3).contiguous()
         return x
+    
+    @torch.inference_mode()
+    def prepare_media(self, conversation):
+        prompt = conversation[0]["value"]
+        media = {"image": []}
+        for item in prompt:
+            if isinstance(item, Image):
+                media["image"].append(load_image(item.path))
+            
+        
+        return media, None
+        
         
     def extract_features(self, pixel_values):
         if self.select_layer == -1:
@@ -167,7 +177,7 @@ class InternVL3(PreTrainedModel):
         pixel_values = torch.cat(media["image"], dim=0).half().cuda()
         vit_embeds = self.extract_features(pixel_values)
         
-        input_embeds = self.language_model.get_input_embeddings()(input_ids).clone()
+        input_embeds = self.language_model.get_input_embeddings()(input_ids)
         B, N, C = input_embeds.shape
         input_embeds = input_embeds.reshape(B * N, C)
         
@@ -179,7 +189,8 @@ class InternVL3(PreTrainedModel):
         input_embeds = input_embeds.reshape(B, N, C)
         
         return input_embeds, None, attention_mask
-
+    
+    @torch.inference_mode()
     def benchmark(self, prompt: Union[str, List], quant_llm) -> None:
         media = {"image": []}
         question = ""
@@ -187,7 +198,6 @@ class InternVL3(PreTrainedModel):
             if isinstance(item, str):
                 question += item
             if isinstance(item, Image):
-                print(item.path)
                 media["image"].append(load_image(item.path))
         
         if '<image>' not in question:
@@ -198,7 +208,6 @@ class InternVL3(PreTrainedModel):
         template = get_conv_template(self.template)
         template.system_message = self.system_message
         eos_token_id = self.tokenizer.convert_tokens_to_ids(template.sep.strip())
-        
         
         template.append_message(template.roles[0], question)
         template.append_message(template.roles[1], None)
@@ -246,6 +255,29 @@ class InternVL3(PreTrainedModel):
         response = self.tokenizer.decode(output[0], skip_special_tokens=True).strip()
         
         return response
+
+    @torch.inference_mode()
+    def stream_gen(
+        self,
+        input_ids,
+        media,
+        media_cfg,
+        start_pos,
+        chunk_prefilling,
+        quant_llm,
+        attention_mask=None,
+    ) -> str:
+        if media is None:
+            inputs_embeds = self.language_model.get_input_embeddings()(input_ids ).clone()
+        else:
+            inputs_embeds, _, _ = self._embed(input_ids, media, None, None, attention_mask)
+    
+        length = inputs_embeds.shape[1]
+        if quant_llm:
+            out = self.language_model(None, start_pos, inputs_embeds, chunk_prefilling)
+        else:
+            out = self.language_model.forwardfp16(None, start_pos, inputs_embeds, chunk_prefilling)
+        return out, length
 
     def forward(
         self,

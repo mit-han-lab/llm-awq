@@ -327,6 +327,18 @@ class NVILAPrompter(BasePrompter):
             system_inst, role1, role2, sen_spliter, qa_spliter, decorator, "\n"
         )
 
+class InternVL3Prompter(BasePrompter):
+    def __init__(self):
+        system_inst = "system\n你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。你可以理解用户提供的视觉内容，并使用自然语言帮助用户完成各种任务。"
+        role1 = "user"
+        role2 = "assistant"
+        sen_splitter = "\n"
+        qa_splitter = "\n"
+        decorator = ["<|im_start|>", "<|im_end|>"]
+        super().__init__(
+            system_inst, role1, role2, sen_splitter, qa_splitter, decorator, "\n"
+        )
+
 
 def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=False):
     if empty_prompt:
@@ -349,7 +361,7 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
     elif model_type.lower() == "falcon":
         # return FalconPrompter()
         return FalconSimplePrompter()
-    elif "qwen" in model_path.lower() or "qwen" in model_type.lower() or "internvl3" in model_type.lower():
+    elif "qwen" in model_path.lower() or "qwen" in model_type.lower():
         return QwenPrompter()
     elif model_type.lower() == "mpt":
         if "mpt" and "chat" in model_path.lower():
@@ -358,6 +370,8 @@ def get_prompter(model_type, model_path="", short_prompt=False, empty_prompt=Fal
             return MPTPrompter()
     elif model_type.lower() == "nvila":
         return NVILAPrompter()
+    elif model_type.lower() == "internvl3":
+        return InternVL3Prompter()
     else:
         raise ValueError(f"model type {model_type} is not supported")
 

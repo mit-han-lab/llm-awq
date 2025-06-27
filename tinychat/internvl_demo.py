@@ -30,7 +30,7 @@ from tinychat.utils.prompt_templates import (
 )
 from llava.utils.media import extract_media
 import tinychat.utils.constants
-from tinychat.stream_generators.NVILA_stream_gen import NVILAStreamGenerator
+from tinychat.stream_generators.internvl_stream_gen import InternVLStreamGenerator
 from tinychat.utils.conversation_utils import gen_params, stream_output, TimeStats
 
 import os
@@ -100,27 +100,13 @@ def main(args):
         pass
 
     if args.quant_VT or args.all:
-        # from tinychat.modules import QuantInternVisionEncoder
-        # model.vision_model.encoder = QuantInternVisionEncoder(model.vision_model.encoder)
-        model.vision_model.compile()
+        from tinychat.modules import QuantInternVisionEncoder
+        model.vision_model.encoder = QuantInternVisionEncoder(model.vision_model.encoder)
     
     model = model.cuda().eval()
     device_warmup(args.device)
     # tune_intern_patch_embedding(model.vision_model, device=args.device)
 
-    print("-" * 80)
-    print("Image_Caption")
-    # Set conversation mode
-    media = Image(args.media[0])
-    text = "Describe the image in detail."
-    prompt = [media, text]
-    print(prompt)
-    # Generate response
-    with torch.no_grad():
-        response = model.benchmark(prompt, args.quant_llm)
-    print(response)
-    exit()
-    
     # Pre-prepare media
     prompt = []
     media_files = []
@@ -142,12 +128,11 @@ def main(args):
         print("=" * 50)
         print("Input Image:")
         vis_images(args.media)
-        
     
     conversation = [{"from": "human", "value": prompt}]
     media, media_cfg = model.prepare_media(conversation)
     # Prepare streaming
-    stream_generator = NVILAStreamGenerator
+    stream_generator = InternVLStreamGenerator
     # Prepare prompt
     if args.max_seq_len <= 1024:
         short_prompt = True
@@ -185,6 +170,7 @@ def main(args):
                     input_prompt = input_prompt
                 else:
                     input_prompt = media_prompt * media_num + input_prompt
+                    
             model_prompter.insert_prompt(input_prompt)
         else:
             model_prompter.insert_prompt(input_prompt)
