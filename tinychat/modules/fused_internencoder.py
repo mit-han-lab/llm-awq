@@ -104,10 +104,7 @@ class QuantInternVisionEncoder(nn.Module):
         )
 
 class QuantInternRMSNorm(nn.Module):
-    def __init__(self,
-                 module: Union[nn.LayerNorm, InternRMSNorm],
-                 use_per_token_quant: bool = True
-    ) -> None:
+    def __init__(self, module: nn.Module, use_per_token_quant=True):
         super().__init__()
         self.weight = nn.Parameter(module.weight.data, requires_grad=False)
         self.bias = nn.Parameter(module.bias.data, requires_grad=False)
@@ -121,8 +118,8 @@ class QuantInternRMSNorm(nn.Module):
         awq_inference_engine.rms_norm_general(
             output,
             hidden_states,
-            self.weight.data,
-            self.bias.data,
+            self.weight,
+            self.bias,
             scale,
             self.variance_epsilon,
             self.use_per_token_quant,
@@ -130,144 +127,106 @@ class QuantInternRMSNorm(nn.Module):
         return output, scale
 
 class QuantInternAttention(nn.Module):
-    """Multi-headed attention from 'Attention Is All You Need' paper"""
-
-    def __init__(self, module: InternAttention, 
-                 config: InternVisionConfig, 
-                 init_only=False):
+    def __init__(self, module: InternAttention, config: InternVisionConfig, init_only=False):
         super().__init__()
         self.config = config
         self.embed_dim = module.embed_dim
         self.num_heads = module.num_heads
-        self.use_flash_attn = config.use_flash_attn and has_flash_attn
-        if config.use_flash_attn and not has_flash_attn:
-            print('Warning: Flash Attention is not available, use_flash_attn is set to False.')
         self.head_dim = self.embed_dim // self.num_heads
-
         self.scale = module.scale
-        self.qkv = W8A8OF16LinearDynamicInputScale.from_linear(
-            module.qkv, init_only=init_only)
+        self.use_flash_attn = config.use_flash_attn
+
+        self.qkv = W8A8OF16LinearDynamicInputScale.from_linear(module.qkv, init_only=init_only)
+        self.proj = W8A8OF16LinearDynamicInputScale.from_linear(module.proj, init_only=init_only)
 
         self.qk_normalization = module.qk_normalization
-
         if self.qk_normalization:
             self.q_norm = QuantInternRMSNorm(module.q_norm)
             self.k_norm = QuantInternRMSNorm(module.k_norm)
 
         if self.use_flash_attn:
+            from tinychat.models.internvl.internvit import FlashAttention
             self.inner_attn = FlashAttention(attention_dropout=config.attention_dropout)
-        self.proj = W8A8OF16LinearDynamicInputScale.from_linear(
-            module.proj, init_only=init_only)
 
-    def _flash_attn(self, x, scale, key_padding_mask=None, need_weights=False):
-        bsz, seq_len, hidden_size = x.shape
-        qkv = torch.empty((bsz * seq_len), hidden_size * 3, device=x.device, dtype=torch.float16)
-        self.qkv(x.reshape(-1, hidden_size), scale, qkv)
-        # print("QKV", qkv.shape)
-        
-        qkv = qkv.view(bsz, seq_len, -1)
-        qkv = rearrange(qkv, 'b s (three h d) -> b s three h d', three=3, h=self.num_heads)
+    def forward(self, hidden_states: torch.Tensor, scale_in: torch.Tensor):
+        bsz, seqlen, hidden_size = hidden_states.shape
+
+        qkv_out = torch.empty(bsz * seqlen, 3 * hidden_size, dtype=torch.float16, device=hidden_states.device)
+        self.qkv(hidden_states.reshape(-1, hidden_size), scale_in, qkv_out)
+
+        qkv = rearrange(qkv_out.view(bsz, seqlen, -1), 'b s (three h d) -> b s three h d', three=3, h=self.num_heads)
 
         if self.qk_normalization:
             q, k, v = qkv.unbind(2)
-            q, q_scale = self.q_norm(q.flatten(-2, -1)).view(q.shape)
-            k, k_scale = self.k_norm(k.flatten(-2, -1)).view(k.shape)
+            q, _ = self.q_norm(q.flatten(-2, -1)); q = q.view_as(q)
+            k, _ = self.k_norm(k.flatten(-2, -1)); k = k.view_as(k)
             qkv = torch.stack([q, k, v], dim=2)
 
-        attn_output, _ = self.inner_attn(
-            qkv, key_padding_mask=key_padding_mask, need_weights=need_weights, causal=False
-        )
-        attn_output = rearrange(attn_output, 'b s h d -> (b s) (h d)')
-        # print("ATTN OUTPUT", attn_output.shape)
-        
-        quant_output = torch.empty((bsz * seq_len), hidden_size, device=x.device, dtype=torch.int8)
-        awq_inference_engine.invoke_quant(
-            quant_output,
-            attn_output,
-            scale
-        )
-        # print("QUANT OUTPUT", quant_output.shape)
-        
-        output = torch.empty((bsz * seq_len), hidden_size, device=x.device, dtype=torch.float16)
-        self.proj(quant_output, scale, output)
-        # print("PROJ OUTPUT", output.shape)
-        
-        return output
+        attn_out, _ = self.inner_attn(qkv, need_weights=False, causal=False)
+        attn_out = rearrange(attn_out, 'b s h d -> (b s) (h d)')
 
-    def forward(self, hidden_states: torch.Tensor, quant_scale: torch.Tensor) -> torch.Tensor:
-        x = self._flash_attn(hidden_states, quant_scale)
-        return x
+        quant_out = torch.empty_like(attn_out, dtype=torch.int8)
+        scale_proj_in = torch.empty(bsz * seqlen, device=hidden_states.device, dtype=torch.float16)
+        awq_inference_engine.invoke_quant(quant_out, attn_out, scale_proj_in)
 
+        proj_out = torch.empty_like(attn_out)
+        self.proj(quant_out, scale_proj_in, proj_out)
+
+        return proj_out
 
 class QuantInternMLP(nn.Module):
     def __init__(self, module: InternMLP, config: InternVisionConfig):
         super().__init__()
         self.config = config
         self.act = module.act
-        self.fc1 = W8A8OF16LinearDynamicInputScale.from_linear(
-            module.fc1
-        )
-        self.fc2 = W8A8OF16LinearDynamicInputScale.from_linear(
-            module.fc2
-        )
-        
-    def forward(self, hidden_states: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-        bsz, seq, hidden_size = hidden_states.shape
-        
-        fc1_output = torch.empty((bsz * seq), hidden_size, device=hidden_states.device, dtype=torch.float16)
-        self.fc1(hidden_states.reshape(-1, hidden_size), scale, fc1_output)
-        
-        tmp = torch.empty((bsz * seq) * self.config.intermediate_size, device=hidden_states.device, dtype=torch.float16)
-        act_output = torch.empty((bsz * seq), self.config.intermediate_size, device=hidden_states.device, dtype=torch.int8)
-        awq_inference_engine.gelu_and_quant(
-            act_output,
-            fc1_output,
-            scale,
-            tmp,
-        )
-        
-        fc2_output = torch.empty((bsz * seq), hidden_size, device=hidden_states.device, dtype=torch.float16)
-        self.fc2(act_output, scale, fc2_output)
-        
-        return fc2_output
+        self.fc1 = W8A8OF16LinearDynamicInputScale.from_linear(module.fc1)
+        self.fc2 = W8A8OF16LinearDynamicInputScale.from_linear(module.fc2)
 
+    def forward(self, hidden_states: torch.Tensor, scale_in: torch.Tensor):
+        bsz, seqlen, hidden_size = hidden_states.shape
+
+        fc1_out = torch.empty((bsz * seqlen), self.config.intermediate_size, dtype=torch.float16, device=hidden_states.device)
+        self.fc1(hidden_states.reshape(-1, hidden_size), scale_in, fc1_out)
+
+        tmp = torch.empty_like(fc1_out)
+        act_out = torch.empty_like(fc1_out, dtype=torch.int8)
+        scale_act = torch.empty(bsz * seqlen, device=hidden_states.device, dtype=torch.float16)
+        awq_inference_engine.gelu_and_quant(act_out, fc1_out, scale_act, tmp)
+
+        fc2_out = torch.empty((bsz * seqlen), hidden_size, dtype=torch.float16, device=hidden_states.device)
+        self.fc2(act_out, scale_act, fc2_out)
+
+        return fc2_out
 
 class QuantInternVisionEncoderLayer(nn.Module):
     def __init__(self, module: InternVisionEncoderLayer, config: InternVisionConfig):
         super().__init__()
         self.config = config
-        self.embed_dim = self.config.hidden_size
-        self.intermediate_size = self.config.intermediate_size
-        
-        self.attn = QuantInternAttention(module.attn, self.config)
-        self.mlp = QuantInternMLP(module.mlp, self.config)
-        
-        self.norm1 = QuantInternRMSNorm(module.norm1).cuda()
-        self.norm2 = QuantInternRMSNorm(module.norm2).cuda()
+        self.embed_dim = config.hidden_size
+        self.intermediate_size = config.intermediate_size
+
+        self.attn = QuantInternAttention(module.attn, config)
+        self.mlp = QuantInternMLP(module.mlp, config)
+
+        self.norm1 = QuantInternRMSNorm(module.norm1)
+        self.norm2 = QuantInternRMSNorm(module.norm2)
 
         self.ls1 = module.ls1
         self.ls2 = module.ls2
 
-    def forward(
-            self,
-            hidden_states: torch.Tensor,
-    ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor], Optional[Tuple[torch.FloatTensor]]]:
-        """
-        Args:
-            hidden_states (`Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]`): input to the layer of shape `(batch, seq_len, embed_dim)`
-        """
+    def forward(self, hidden_states: torch.Tensor):
         bsz, seqlen, hidden_size = hidden_states.shape
+
         residual = hidden_states
-        normfn_output, quant_scale = self.norm1(hidden_states)
-        attn_output = self.attn(normfn_output.reshape(bsz, seqlen, hidden_size), quant_scale)
-        
-        hidden_states = residual + attn_output.reshape(bsz, seqlen, hidden_size) * self.ls1
-        
+        norm1_out, scale1 = self.norm1(hidden_states)
+        attn_out = self.attn(norm1_out.view(bsz, seqlen, hidden_size), scale1)
+        hidden_states = residual + attn_out.view(bsz, seqlen, hidden_size) * self.ls1
+
         residual = hidden_states
-        normfn_output, quant_scale = self.norm2(hidden_states)
-        mlp_output = self.mlp(normfn_output.reshape(bsz, seqlen, hidden_size), quant_scale)
-        hidden_states = residual + mlp_output.reshape(bsz, seqlen, hidden_size) * self.ls2
-        
-        
+        norm2_out, scale2 = self.norm2(hidden_states)
+        mlp_out = self.mlp(norm2_out.view(bsz, seqlen, hidden_size), scale2)
+        hidden_states = residual + mlp_out.view(bsz, seqlen, hidden_size) * self.ls2
+
         return hidden_states
+
 
