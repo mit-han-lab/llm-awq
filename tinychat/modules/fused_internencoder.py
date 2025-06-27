@@ -184,16 +184,21 @@ class QuantInternMLP(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, scale_in: torch.Tensor):
         bsz, seqlen, hidden_size = hidden_states.shape
-
-        fc1_out = torch.empty((bsz * seqlen), self.config.intermediate_size, dtype=torch.float16, device=hidden_states.device)
+        device = hidden_states.device
+        
+        fc1_out = torch.empty((bsz * seqlen), self.config.intermediate_size, dtype=torch.float16, device=device)
         self.fc1(hidden_states.reshape(-1, hidden_size), scale_in, fc1_out)
-
-        tmp = torch.empty_like(fc1_out)
+        
+        tmp = torch.empty(
+            ((bsz * seqlen) * self.config.intermediate_size),
+            device=device,
+            dtype=torch.float16,
+        )
         act_out = torch.empty_like(fc1_out, dtype=torch.int8)
-        scale_act = torch.empty(bsz * seqlen, device=hidden_states.device, dtype=torch.float16)
+        scale_act = torch.empty(bsz * seqlen, device=device, dtype=torch.float16)
         awq_inference_engine.gelu_and_quant(act_out, fc1_out, scale_act, tmp)
 
-        fc2_out = torch.empty((bsz * seqlen), hidden_size, dtype=torch.float16, device=hidden_states.device)
+        fc2_out = torch.empty((bsz * seqlen), hidden_size, dtype=torch.float16, device=device)
         self.fc2(act_out, scale_act, fc2_out)
 
         return fc2_out

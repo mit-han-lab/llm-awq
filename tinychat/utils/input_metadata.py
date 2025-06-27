@@ -25,9 +25,7 @@ class ActivationBuffer:
 
         if self.model_class == "SiglipEncoder":
             self.model_dtype = model.layers[0].self_attn.k_proj.weight.dtype
-        elif self.model_class == "InternVisionEncoder":
-            self.model_dtype = model.layers[0].attn.qkv.weight.dtype
-        
+            
         self.device = "cuda"
         assert self.model_class in [
             "SiglipEncoder",
@@ -42,10 +40,6 @@ class ActivationBuffer:
     def allocate_activation_buffer(self, batched_seq_len):
         if self.model_class == "SiglipEncoder":
             self.__allocate_activation_buffer_siglip(batched_seq_len)
-        elif self.model_class == "InternVisionEncoder":
-            raise NotImplementedError(
-                f"model_class: {self.model_class} is currently not supported."
-            )
         else:
             raise NotImplementedError(
                 f"model_class: {self.model_class} is currently not supported."

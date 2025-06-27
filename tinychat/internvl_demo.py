@@ -35,7 +35,19 @@ from tinychat.utils.conversation_utils import gen_params, stream_output, TimeSta
 
 import os
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+def tune_intern_patch_embedding(vision_model, device):
+    patch_embedding = vision_model.embeddings.patch_embedding
+    patch_embedding = patch_embedding.to(device)
+    
+    image = (
+        torch.randn((1, patch_embedding.in_channels, 336, 336))
+        .to(device)
+        .to(patch_embedding.weight.dtype)
+    )
+    for i in range(100):
+        patch_embedding(image)
 
 
 def main(args):
@@ -88,12 +100,13 @@ def main(args):
         pass
 
     if args.quant_VT or args.all:
-        from tinychat.modules import QuantInternVisionEncoder
-        model.vision_model.encoder = QuantInternVisionEncoder(model.vision_model.encoder)
+        # from tinychat.modules import QuantInternVisionEncoder
+        # model.vision_model.encoder = QuantInternVisionEncoder(model.vision_model.encoder)
+        model.vision_model.compile()
     
     model = model.cuda().eval()
     device_warmup(args.device)
-    #@jamesh tune_llava_patch_embedding(model.vision_tower, device=args.device)
+    # tune_intern_patch_embedding(model.vision_model, device=args.device)
 
     print("-" * 80)
     print("Image_Caption")
