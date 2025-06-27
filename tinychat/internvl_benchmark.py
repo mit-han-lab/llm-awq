@@ -11,7 +11,6 @@ from awq.quantize.quantizer import real_quantize_model_weight
 from transformers import AutoConfig
 import tinychat
 
-from torchao.quantization import Int4WeightOnlyConfig, quantize_
 import os
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
