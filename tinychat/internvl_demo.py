@@ -88,15 +88,8 @@ def main(args):
         pass
 
     if args.quant_VT or args.all:
-        #@jamesh from tinychat.modules import QuantSiglipEncoder
-
-        # if args.fakequant_VT:
-        #     fake_quant(model.vision_tower.vision_tower.vision_model.encoder)
-        # else:
-        #     model.vision_tower.vision_tower.vision_model.encoder = QuantSiglipEncoder(
-        #         model.vision_tower.vision_tower.vision_model.encoder
-        #     )
-        pass
+        from tinychat.modules import QuantInternVisionEncoder
+        model.vision_model.encoder = QuantInternVisionEncoder(model.vision_model.encoder)
     
     model = model.cuda().eval()
     device_warmup(args.device)

@@ -106,12 +106,9 @@ def main() -> None:
         model = model.to("cuda")
     model = model.to(args.device)
     if args.quant_VT or args.all:
-        # from tinychat.modules import QuantSiglipEncoder
-
-        # model.vision_tower.vision_tower.vision_model.encoder = QuantSiglipEncoder(
-        #     model.vision_tower.vision_tower.vision_model.encoder
-        # )
-        pass
+        from tinychat.modules import QuantInternVisionEncoder
+        model.vision_model.encoder = QuantInternVisionEncoder(model.vision_model.encoder)
+        
     model = model.cuda().eval()
 
     if args.video_caption or args.all or args.all_task:

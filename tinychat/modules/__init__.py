@@ -3,3 +3,4 @@ from .fused_attn import *
 from .fused_mlp import *
 from .fused_vision_attn import *
 from .fused_siglipdecoder import *
+from .fused_internencoder import *
