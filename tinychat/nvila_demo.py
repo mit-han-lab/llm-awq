@@ -36,7 +36,7 @@ from tinychat.utils.conversation_utils import gen_params, stream_output, TimeSta
 
 import os
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 def main(args):
@@ -209,7 +209,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--media", type=str, nargs="+", help="Multi-modal input (Video or image path)"
     )
-    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--max_seq_len", type=int, default=2048)
     parser.add_argument(
         "--single_round",
