@@ -102,6 +102,7 @@ def main(args):
     if args.quant_VT or args.all:
         from tinychat.modules import QuantInternVisionEncoder
         model.vision_model.encoder = QuantInternVisionEncoder(model.vision_model.encoder)
+        # model.vision_model.encoder = torch.compile(model.vision_model.encoder)
     
     model = model.cuda().eval()
     device_warmup(args.device)

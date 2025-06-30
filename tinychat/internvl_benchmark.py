@@ -11,6 +11,8 @@ from awq.quantize.quantizer import real_quantize_model_weight
 from transformers import AutoConfig
 import tinychat
 
+from torchao.quantization import quantize_, Int4WeightOnlyConfig
+
 import os
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -111,9 +113,9 @@ def main() -> None:
     if args.quant_VT or args.all:
         from tinychat.modules import QuantInternVisionEncoder
         model.vision_model.encoder = QuantInternVisionEncoder(model.vision_model.encoder)
-        
+        model.vision_model.encoder = torch.compile(model.vision_model.encoder)
+    
     model = model.cuda().eval()
-    # model.compile()
 
     if args.video_caption or args.all or args.all_task:
         print("-" * 80)

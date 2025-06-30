@@ -139,7 +139,7 @@ class InternVL3(PreTrainedModel):
         
         return media, None
         
-        
+    @torch.inference_mode()
     def extract_features(self, pixel_values):
         if self.select_layer == -1:
             vit_embeds = self.vision_model(
@@ -160,6 +160,7 @@ class InternVL3(PreTrainedModel):
         vit_embeds = self.mlp1(vit_embeds)
         return vit_embeds
         
+    @torch.inference_mode()
     def _embed(
         self,
         input_ids: torch.Tensor,
@@ -279,49 +280,83 @@ class InternVL3(PreTrainedModel):
             out = self.language_model.forwardfp16(None, start_pos, inputs_embeds, chunk_prefilling)
         return out, length
 
+    @torch.inference_mode()
     def forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        media: Optional[Dict[str, List[torch.Tensor]]] = None,
-        images: Optional[torch.FloatTensor] = None,
-        media_config: Optional[List] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        dpo_forward: bool = False,
-        **kwargs,
+            self,
+            pixel_values: torch.FloatTensor,
+            input_ids: torch.LongTensor = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            image_flags: Optional[torch.LongTensor] = None,
+            past_key_values: Optional[List[torch.FloatTensor]] = None,
+            labels: Optional[torch.LongTensor] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-        self.freezed_module_patch()
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if images is not None:
-            if media is not None:
-                raise ValueError(
-                    "Both 'media' and 'images' are provided. Please provide only one."
-                )
-            media = {"image": images}
+        image_flags = image_flags.squeeze(-1)
+        input_embeds = self.language_model.get_input_embeddings()(input_ids).clone()
 
-        if media_config is None:
-            media_config = defaultdict(dict)
+        vit_embeds = self.extract_feature(pixel_values)
+        vit_embeds = vit_embeds[image_flags == 1]
+        vit_batch_size = pixel_values.shape[0]
 
-        if inputs_embeds is None:
-            
-            inputs_embeds, labels, attention_mask = self._embed(
-                input_ids, media, media_config, labels, attention_mask
-            )
+        B, N, C = input_embeds.shape
+        input_embeds = input_embeds.reshape(B * N, C)
 
-        outputs = self.llm(
-            inputs_embeds=inputs_embeds,
+        if torch.distributed.is_initialized() and torch.distributed.get_rank() == 0:
+            print(f'dynamic ViT batch size: {vit_batch_size}, images per sample: {vit_batch_size / B}, dynamic token length: {N}')
+
+        input_ids = input_ids.reshape(B * N)
+        selected = (input_ids == self.img_context_token_id)
+        try:
+            input_embeds[selected] = input_embeds[selected] * 0.0 + vit_embeds.reshape(-1, C)
+        except Exception as e:
+            vit_embeds = vit_embeds.reshape(-1, C)
+            print(f'warning: {e}, input_embeds[selected].shape={input_embeds[selected].shape}, '
+                  f'vit_embeds.shape={vit_embeds.shape}')
+            n_token = min(selected.sum(), vit_embeds.size(0))
+            input_embeds[selected][:n_token] = input_embeds[selected][:n_token] * 0.0 + vit_embeds[:n_token]
+
+        input_embeds = input_embeds.reshape(B, N, C)
+
+        outputs = self.language_model(
+            inputs_embeds=input_embeds,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
-            labels=labels,
-            **kwargs,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
         )
+        logits = outputs.logits
 
-        if dpo_forward:
-            return outputs.logits, labels
+        loss = None
+        if labels is not None:
+            # Shift so that tokens < n predict n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss()
+            shift_logits = shift_logits.view(-1, self.language_model.config.vocab_size)
+            shift_labels = shift_labels.view(-1)
+            # Enable model parallelism
+            shift_labels = shift_labels.to(shift_logits.device)
+            loss = loss_fct(shift_logits, shift_labels)
 
-        return outputs
+        if not return_dict:
+            output = (logits,) + outputs[1:]
+            return (loss,) + output if loss is not None else output
+
+        return CausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
     
