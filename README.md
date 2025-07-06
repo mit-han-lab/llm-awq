@@ -159,7 +159,7 @@ The detailed support list:
 | [Vicuna-v1.1](/scripts/vicuna_example.sh) | 7B/13B                 | ✅         |           |
 | [LLaVA-v0](/scripts/llava_example.sh) | 13B                       | ✅         |           |
 
-Note: We only list models that we have prepare the [AWQ searching results](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo/tree/main) in the table above. AWQ also supports models such as LLaVA-v1.5 7B, and you may need to run the [AWQ search](#usage) on your own to quantize these models.
+Note: We only list models that we have prepare the [AWQ searching results](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo/tree/main) in the table above. AWQ also supports models such as LLaVA-v1.5 7B, and you may need to run the [AWQ search](#usage) on your own to quantize these models. For our latest VLM NVILA, quantized weights are available [here](https://huggingface.co/Efficient-Large-Model/NVILA-AWQ).
 
 ## Examples
 
