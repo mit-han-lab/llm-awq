@@ -109,5 +109,5 @@ def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=3
         pixel_values = torch.stack(pixel_values)
         num_patches_list.append(pixel_values.shape[0])
         pixel_values_list.append(pixel_values)
-    pixel_values = torch.cat(pixel_values_list)
-    return pixel_values, num_patches_list
+    
+    return pixel_values_list, num_patches_list

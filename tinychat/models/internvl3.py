@@ -131,13 +131,15 @@ class InternVL3(PreTrainedModel):
     @torch.inference_mode()
     def prepare_media(self, conversation):
         prompt = conversation[0]["value"]
-        media = {"image": []}
+        media = {"image": [], "video": []}
         for item in prompt:
             if isinstance(item, Image):
                 media["image"].append(load_image(item.path))
-            
+            if isinstance(item, Video):
+                pixel_values, num_patches_list = load_video(item.path)
+                media["video"].extend(pixel_values)
         
-        return media, None
+        return media, num_patches_list if media["video"] else None
         
     @torch.inference_mode()
     def extract_features(self, pixel_values):
@@ -175,7 +177,11 @@ class InternVL3(PreTrainedModel):
             else torch.ones_like(input_ids, dtype=torch.bool)
         )
         
-        pixel_values = torch.cat(media["image"], dim=0).half().cuda()
+        if media["image"]:
+            pixel_values = torch.cat(media["image"], dim=0).half().cuda()
+        elif media["video"]:
+            pixel_values = torch.cat(media["video"], dim=0).half().cuda()
+            
         vit_embeds = self.extract_features(pixel_values)
         
         input_embeds = self.language_model.get_input_embeddings()(input_ids)
@@ -193,18 +199,26 @@ class InternVL3(PreTrainedModel):
     
     @torch.inference_mode()
     def benchmark(self, prompt: Union[str, List], quant_llm) -> None:
-        media = {"image": []}
+        media = {"image": [], "video": []}
         question = ""
         for item in prompt:
             if isinstance(item, str):
                 question += item
             if isinstance(item, Image):
                 media["image"].append(load_image(item.path))
+            if isinstance(item, Video):
+                pixel_values, num_patches_list = load_video(item.path)
+                media["video"].extend(pixel_values)
         
-        if '<image>' not in question:
+        if media["image"]:
+            num_patches_list = [image.size(0) for image in media["image"]]
+        
+        if media["image"] and '<image>' not in question:
             question = '<image>\n' + question
-            
-        num_patches_list = [image.size(0) for image in media["image"]]
+        
+        if media["video"] and '<image>' not in question:
+            video_prefix = ''.join([f'Frame{i+1}: <image>\n' for i in range(len(num_patches_list))])
+            question = video_prefix + question
         
         template = get_conv_template(self.template)
         template.system_message = self.system_message
@@ -243,11 +257,18 @@ class InternVL3(PreTrainedModel):
             t_ed = time()
             torch.cuda.empty_cache()
             
-        print(
-            "Time of vision tower and others is {:.5f} s for {} images ({} x {} x {})".format(
-                t_ed - t_st, sum(num_patches_list), media["image"][0].shape[1], media["image"][0].shape[2], media["image"][0].shape[3]
+        if media["image"]:
+            print(
+                "Time of vision tower and others is {:.5f} s for {} images ({} x {} x {})".format(
+                    t_ed - t_st, sum(num_patches_list), media["image"][0].shape[1], media["image"][0].shape[2], media["image"][0].shape[3]
+                )
             )
-        )
+        elif media["video"]:
+            print(
+                "Time of vision tower and others is {:.5f} s for {} video frames ({} x {} x {})".format(
+                    t_ed - t_st, sum(num_patches_list),  media["video"][0].shape[1], media["video"][0].shape[2], media["video"][0].shape[3]
+                )
+            )
         output = self.language_model.benchmark(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,

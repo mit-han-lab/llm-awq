@@ -170,8 +170,12 @@ def main(args):
                 if media_prompt in input_prompt:
                     input_prompt = input_prompt
                 else:
-                    input_prompt = media_prompt * media_num + input_prompt
-                    
+                    if media_prompt == "<image>":
+                        input_prompt = media_prompt * media_num + input_prompt
+                    elif media_prompt == "<vila/video>":
+                        video_prefix = ''.join([f'Frame{i+1}: <image>\n' for i in range(len(media_cfg))])
+                        input_prompt = video_prefix + input_prompt
+            
             model_prompter.insert_prompt(input_prompt)
         else:
             model_prompter.insert_prompt(input_prompt)

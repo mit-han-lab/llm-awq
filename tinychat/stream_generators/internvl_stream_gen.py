@@ -43,6 +43,20 @@ def InternVLStreamGenerator(
         for num_patches in num_patches_list:
             image_tokens = IMG_START_TOKEN + IMG_CONTEXT_TOKEN * NUM_IMAGE_TOKEN * num_patches + IMG_END_TOKEN
             input = input.replace('<image>', image_tokens, 1)
+            
+    if media is not None and "video" in media:
+        num_patches_list = [video.size(0) for video in media["video"]]
+        
+        IMG_START_TOKEN = '<img>'
+        IMG_END_TOKEN = '</img>'
+        IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
+        NUM_IMAGE_TOKEN = 256
+        
+        img_context_token_id = model.tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
+        model.img_context_token_id = img_context_token_id
+        for num_patches in num_patches_list:
+            image_tokens = IMG_START_TOKEN + IMG_CONTEXT_TOKEN * NUM_IMAGE_TOKEN * num_patches + IMG_END_TOKEN
+            input = input.replace('<image>', image_tokens, 1)
     
     input_ids = model.tokenizer(input)["input_ids"]
     output_ids = list(input_ids)
