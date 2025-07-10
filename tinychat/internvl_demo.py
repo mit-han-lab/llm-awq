@@ -1,14 +1,12 @@
 import argparse
 
 from termcolor import colored
-from huggingface_hub import hf_hub_download
-import os
+
 import llava
-from llava import conversation as clib
 from llava.media import Image, Video
 import torch
 from awq.quantize import fake_quant
-from transformers import AutoConfig
+from transformers import AutoConfig, AutoTokenizer
 from tinychat.utils.load_quant import load_awq_model
 from tinychat.utils.llava_image_processing import (
     load_images,
@@ -32,33 +30,24 @@ from tinychat.utils.prompt_templates import (
 )
 from llava.utils.media import extract_media
 import tinychat.utils.constants
-from tinychat.stream_generators.NVILA_stream_gen import NVILAStreamGenerator
+from tinychat.stream_generators.internvl_stream_gen import InternVLStreamGenerator
 from tinychat.utils.conversation_utils import gen_params, stream_output, TimeStats
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+import os
 
-def download_model_file(
-    repo_id: str = "Efficient-Large-Model/NVILA-AWQ",
-    filename: str = None,
-    local_dir: str = "./hf_cache",      
-    force_download: bool = False,         
-) -> str:
-    os.makedirs(local_dir, exist_ok=True)
-    local_path = os.path.join(local_dir, filename)
-    if force_download or not os.path.exists(local_path):
-        print(f"Downloading {filename} from {repo_id}...")
-        hf_hub_download(
-            repo_id=repo_id,
-            filename=filename,
-            local_dir=local_dir,
-            local_dir_use_symlinks=False,  
-            resume_download=True,       
-            force_download=force_download,
-        )
-        print(f"File saved to: {local_path}")
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+def tune_intern_patch_embedding(vision_model, device):
+    patch_embedding = vision_model.embeddings.patch_embedding
+    patch_embedding = patch_embedding.to(device)
     
-    return local_path
-
+    image = (
+        torch.randn((1, patch_embedding.in_channels, 336, 336))
+        .to(device)
+        .to(patch_embedding.weight.dtype)
+    )
+    for i in range(100):
+        patch_embedding(image)
 
 
 def main(args):
@@ -72,20 +61,27 @@ def main(args):
     tinychat.utils.constants.max_seq_len = args.max_seq_len
 
     # Prepare model
-    from tinychat.models.nvila_qwen2 import NVILAQwen2
+    from tinychat.models import InternVL3
+    from tinychat.models.internvl.internvit import InternVisionModel
     from transformers import AutoConfig
     from tinychat.models.qwen2 import Qwen2ForCausalLM
 
-    config = AutoConfig.from_pretrained(args.model_path)
+    config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
     config.resume_path = args.model_path
     if args.quant_llm or args.all:
-        model = NVILAQwen2(config, False).half()
+        model = InternVL3.from_pretrained(args.model_path, config=config).half()
     else:
-        model = NVILAQwen2(config, True).half()
+        llm = Qwen2ForCausalLM.from_pretrained(args.model_path)
+        llm = llm.cpu()
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model_path, use_fast=False, trust_remote_code=True
+        )
+        llm.resize_token_embeddings(len(tokenizer))
+        model = InternVL3(config, language_model=llm).half()
 
     if args.smooth_VT or args.all:
         from awq.quantize import smooth_lm
-        args.act_scale_path=download_model_file(filename=args.act_scale_path)
+
         act_scales = torch.load(args.act_scale_path)
         smooth_lm(model.vision_tower, act_scales, 0.3)
     if args.quant_llm or args.all:
@@ -95,26 +91,22 @@ def main(args):
             make_fused_mlp,
             make_fused_vision_attn,
         )
-        args.quant_path=download_model_file(filename=args.quant_path)
-        model.llm = Qwen2ForCausalLM(model.llm_cfg).half()
-        model.llm = load_awq_model(model.llm, args.quant_path, 4, 128, args.device)
-        make_quant_attn(model.llm, args.device, True)
-        make_quant_norm(model.llm)
-        model.llm.cpu()
-        model.llm.resize_token_embeddings(len(model.tokenizer))
+
+        model = load_awq_model(model, args.quant_path, 4, 128, args.device)
+        make_quant_attn(model, args.device, True)
+        make_quant_norm(model)
+        model.cpu()
+        model.resize_token_embeddings(len(model.tokenizer))
+        pass
 
     if args.quant_VT or args.all:
-        from tinychat.modules import QuantSiglipEncoder
-
-        if args.fakequant_VT:
-            fake_quant(model.vision_tower.vision_tower.vision_model.encoder)
-        else:
-            model.vision_tower.vision_tower.vision_model.encoder = QuantSiglipEncoder(
-                model.vision_tower.vision_tower.vision_model.encoder
-            )
+        from tinychat.modules import QuantInternVisionEncoder
+        model.vision_model.encoder = QuantInternVisionEncoder(model.vision_model.encoder)
+        # model.vision_model.encoder = torch.compile(model.vision_model.encoder)
+    
     model = model.cuda().eval()
     device_warmup(args.device)
-    tune_llava_patch_embedding(model.vision_tower, device=args.device)
+    # tune_intern_patch_embedding(model.vision_model, device=args.device)
 
     # Pre-prepare media
     prompt = []
@@ -137,10 +129,11 @@ def main(args):
         print("=" * 50)
         print("Input Image:")
         vis_images(args.media)
+    
     conversation = [{"from": "human", "value": prompt}]
     media, media_cfg = model.prepare_media(conversation)
     # Prepare streaming
-    stream_generator = NVILAStreamGenerator
+    stream_generator = InternVLStreamGenerator
     # Prepare prompt
     if args.max_seq_len <= 1024:
         short_prompt = True
@@ -177,7 +170,12 @@ def main(args):
                 if media_prompt in input_prompt:
                     input_prompt = input_prompt
                 else:
-                    input_prompt = media_prompt * media_num + input_prompt
+                    if media_prompt == "<image>":
+                        input_prompt = media_prompt * media_num + input_prompt
+                    elif media_prompt == "<vila/video>":
+                        video_prefix = ''.join([f'Frame{i+1}: <image>\n' for i in range(len(media_cfg))])
+                        input_prompt = video_prefix + input_prompt
+            
             model_prompter.insert_prompt(input_prompt)
         else:
             model_prompter.insert_prompt(input_prompt)
@@ -231,8 +229,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--media", type=str, nargs="+", help="Multi-modal input (Video or image path)"
     )
-    parser.add_argument("--device", type=str, default="cuda:0")
-    parser.add_argument("--max_seq_len", type=int, default=2048)
+    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--max_seq_len", type=int, default=4098)
     parser.add_argument(
         "--single_round",
         action="store_true",

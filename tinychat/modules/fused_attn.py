@@ -185,6 +185,8 @@ class QuantLlamaAttentionFused(nn.Module):
         self.rope_scaling = args.rope_scaling
         if self.rope_scaling is None:
             self.rope_scaling = 1.0
+        if isinstance(self.rope_scaling, dict):
+            self.rope_scaling = self.rope_scaling.get("factor", 1.0)
 
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
@@ -345,6 +347,8 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
         self.rope_scaling = args.rope_scaling
         if self.rope_scaling is None:
             self.rope_scaling = 1.0
+        elif isinstance(self.rope_scaling, dict):
+            self.rope_scaling = self.rope_scaling.get("factor", 1.0)
 
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
@@ -481,7 +485,6 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
             xq = xq.view(bsz, self.n_local_heads, self.head_dim)
             xk = xk.view(bsz, self.num_key_value_heads, self.head_dim)
             xv = xv.view(bsz, self.num_key_value_heads, self.head_dim)
-
             output = awq_inference_engine.single_query_attention(
                 xq,
                 xk,

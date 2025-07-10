@@ -25,6 +25,9 @@ def get_named_linears(module):
 def get_blocks(model):
     if model.__class__.__name__ in ("LlamaForCausalLM", "Qwen2ForCausalLM"):
         layers = model.model.layers
+    elif model.__class__.__name__ == "InternVL3":
+        layers = model.language_model.model.layers
+        # layers = [model.language_model.model.layers, model.vision_model.encoder.layers]
     elif model.__class__.__name__ == "LlavaLlamaForCausalLM":
         # layers = [model.model.layers, model.model.vision_tower.vision_tower.vision_model.encoder.layers]
         layers = model.model.layers
@@ -51,6 +54,14 @@ def move_embed(model, device):
     if isinstance(model, (LlamaForCausalLM, Qwen2ForCausalLM)):
         model.model.embed_tokens = model.model.embed_tokens.to(device)
         model.model.rotary_emb = model.model.rotary_emb.to(device)
+    elif model.__class__.__name__ == "InternVL3":
+        model.language_model.model.embed_tokens = (
+            model.language_model.model.embed_tokens.to(device)
+        )
+        model.language_model.model.rotary_emb = (
+            model.language_model.model.rotary_emb.to(device)
+        )
+        model.vision_model.embeddings.to(device)
     elif isinstance(model, LlavaLlamaForCausalLM):
         model.model.embed_tokens = model.model.embed_tokens.to(device)
         model.model.vision_tower.vision_tower.vision_model.embeddings.to(device)
@@ -134,6 +145,8 @@ def run_awq(
     try:
         if model.__class__.__name__ == "LlavaLlamaModel":
             model.llm(samples.to(next(model.parameters()).device))
+        elif model.__class__.__name__ == "InternVL3":
+            model.language_model(samples.to(next(model.parameters()).device))
         else:
             model(samples.to(next(model.parameters()).device))
     except ValueError:  # work with early exit

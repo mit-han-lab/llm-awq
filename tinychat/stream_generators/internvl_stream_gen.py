@@ -1,14 +1,9 @@
 import torch
 import gc
 import time
+from typing import Optional
 
-from transformers.generation.logits_process import (
-    LogitsProcessorList,
-    RepetitionPenaltyLogitsProcessor,
-    TemperatureLogitsWarper,
-    TopKLogitsWarper,
-    TopPLogitsWarper,
-)
+from .llava_stream_gen import prepare_logits_processor
 
 context_tokens = 0
 context_time = 0.0
@@ -16,46 +11,57 @@ total_tokens = 0
 generation_time_list = []
 
 
-def prepare_logits_processor(
-    temperature: float, repetition_penalty: float, top_p: float, top_k: int
-) -> LogitsProcessorList:
-    processor_list = LogitsProcessorList()
-    # TemperatureLogitsWarper doesn't accept 0.0, 1.0 makes it a no-op so we skip two cases.
-    if temperature >= 1e-5 and temperature != 1.0:
-        processor_list.append(TemperatureLogitsWarper(temperature))
-    if repetition_penalty > 1.0:
-        processor_list.append(RepetitionPenaltyLogitsProcessor(repetition_penalty))
-    if 1e-8 <= top_p < 1.0:
-        processor_list.append(TopPLogitsWarper(top_p))
-    if top_k > 0:
-        processor_list.append(TopKLogitsWarper(top_k))
-    return processor_list
-
-
 @torch.inference_mode()
-def StreamGenerator(
+def InternVLStreamGenerator(
     model,
-    tokenizer,
+    gen_params,
     input: str,
-    start_pos: int,
-    gen_params: dict,
+    media=None,
+    media_cfg=None,
+    start_pos: int = 0,
     device: str = "cuda:0",
     stream_interval: int = 2,
     echo: bool = False,
     stop_token_ids=[],
-    chunk_prefilling=False,
-    quant_llm=False,
+    image_tensor: Optional[torch.FloatTensor] = None,
+    chunk_prefilling: bool = False,
+    quant_llm: bool = False,
 ):
     if chunk_prefilling and start_pos != 0:
-        input_ids = tokenizer(input).input_ids[
-            1:
-        ]  # tokenizer will add a <s> at the beginning, so to delete it (important for chunk_prefilling)
-    else:
-        input_ids = tokenizer(input)["input_ids"]
-    input_echo_len = len(input_ids)
+        input = "<|im_start|>" + input
+        
+    if media is not None and "image" in media:
+        num_patches_list = [image.size(0) for image in media["image"]]
+            
+        IMG_START_TOKEN = '<img>'
+        IMG_END_TOKEN = '</img>'
+        IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
+        NUM_IMAGE_TOKEN = 256
+        
+        img_context_token_id = model.tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
+        model.img_context_token_id = img_context_token_id
+        for num_patches in num_patches_list:
+            image_tokens = IMG_START_TOKEN + IMG_CONTEXT_TOKEN * NUM_IMAGE_TOKEN * num_patches + IMG_END_TOKEN
+            input = input.replace('<image>', image_tokens, 1)
+            
+    if media is not None and "video" in media:
+        num_patches_list = [video.size(0) for video in media["video"]]
+        
+        IMG_START_TOKEN = '<img>'
+        IMG_END_TOKEN = '</img>'
+        IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
+        NUM_IMAGE_TOKEN = 256
+        
+        img_context_token_id = model.tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
+        model.img_context_token_id = img_context_token_id
+        for num_patches in num_patches_list:
+            image_tokens = IMG_START_TOKEN + IMG_CONTEXT_TOKEN * NUM_IMAGE_TOKEN * num_patches + IMG_END_TOKEN
+            input = input.replace('<image>', image_tokens, 1)
+    
+    input_ids = model.tokenizer(input)["input_ids"]
     output_ids = list(input_ids)
+    input_echo_len = len(output_ids)
     len_input = len(input)
-
     if gen_params.top_k <= 0:
         top_k = gen_params.n_vocab
     else:
@@ -63,73 +69,58 @@ def StreamGenerator(
     logits_processor = prepare_logits_processor(
         gen_params.temp, gen_params.repeat_penalty, gen_params.top_p, top_k
     )
-
     past_key_values = out = None
-    stop_token_ids.append(tokenizer.eos_token_id)
+    stop_token_ids.append(model.tokenizer.eos_token_id)
     max_new_tokens = gen_params.n_predict
+
     for i in range(max_new_tokens):
         torch.cuda.synchronize()
         t_st = time.time()
-
         if i == 0:
             inputs = torch.as_tensor([input_ids], device=device)
         else:
             inputs = torch.as_tensor([[token]], device=device)
-
-        if (
-            "llama" not in model.__class__.__name__.lower()
-            and "mpt" not in model.__class__.__name__.lower()
-            and "falcon" not in model.__class__.__name__.lower()
-            and "qwen" not in model.__class__.__name__.lower()
-            and "internvl" not in model.__class__.__name__.lower()
-        ):
-            if i == 0:  # Context Stage
-                # out = model(inputs, use_cache=True)
-                out = model(inputs)
-                logits = out.logits
-                past_key_values = out.past_key_values
-            else:
-                out = model(
-                    input_ids=inputs,
-                    use_cache=True,
-                    past_key_values=past_key_values,
-                )
-                logits = out.logits
-                past_key_values = out.past_key_values
-        else:
-            if (
-                "llama" in model.__class__.__name__.lower()
-                or "qwen" in model.__class__.__name__.lower()
-                or "internvl" in model.__class__.__name__.lower()
-            ) and not quant_llm:
-                out = model(
-                    inputs,
-                    start_pos=start_pos,
-                    chunk_prefilling=chunk_prefilling,
-                    quant=quant_llm,
-                )
-            else:
-                out = model(
-                    inputs, start_pos=start_pos, chunk_prefilling=chunk_prefilling
-                )
-            start_pos += inputs.shape[1]
-            logits = out
+        out, length = model.stream_gen(
+            input_ids=inputs,
+            media=media,
+            media_cfg=media_cfg,
+            start_pos=start_pos,
+            chunk_prefilling=chunk_prefilling,
+            quant_llm=quant_llm,
+        )
+        start_pos += length
+        logits = out
         torch.cuda.synchronize()
         t_ed = time.time()
-
+        media = None
+        media_cfg = None
+        if torch.sum(torch.isinf(logits)):
+            print(
+                "{a} of {b}".format(
+                    a=torch.sum(torch.isinf(logits)).item(), b=logits.numel()
+                )
+            )
+            print("{},{}".format(torch.max(logits), torch.min(logits)))
         # Processing the logits
         if logits_processor:
             if gen_params.repeat_penalty > 1.0:
                 tmp_output_ids = torch.as_tensor([output_ids], device=logits.device)
+                # tmp_output_ids = output_ids[0].unsqueeze(0)
             else:
                 tmp_output_ids = None
             last_token_logits = logits_processor(tmp_output_ids, logits[:, -1, :])[0]
         else:
-            last_token_logits = logits[0, -1, :]
+            last_token_logits = logits[:, -1, :]
         if gen_params.temp < 1e-5 or gen_params.top_p < 1e-8:  # greedy
             token = int(torch.argmax(last_token_logits))
         else:
-            probs = torch.softmax(last_token_logits, dim=-1)
+            probs = torch.softmax(last_token_logits.float(), dim=-1)
+            if torch.any(torch.isinf(probs)) or torch.any(torch.isnan(probs)):
+                print(
+                    "[Error] Invalid probabilities detected (Inf/Nan exists). Saving the tensor and exiting..."
+                )
+                torch.save(last_token_logits, "last_token_logits.pt")
+                exit()
             token = int(torch.multinomial(probs, num_samples=1))
         output_ids.append(token)
 
@@ -139,7 +130,7 @@ def StreamGenerator(
         global generation_time_list
         if i == 0:
             context_time = t_ed - t_st
-            context_tokens = inputs.shape[1]
+            context_tokens = length
             generation_time_list = []
         else:
             generation_time_list.append(t_ed - t_st)
@@ -157,7 +148,7 @@ def StreamGenerator(
                 tmp_output_ids = output_ids[input_echo_len:]
                 rfind_start = 0
 
-            output = tokenizer.decode(
+            output = model.tokenizer.decode(
                 tmp_output_ids,
                 skip_special_tokens=True,
                 spaces_between_special_tokens=False,

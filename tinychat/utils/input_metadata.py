@@ -23,7 +23,9 @@ class ActivationBuffer:
     def __init__(self, model):
         self.model_class = model.__class__.__name__
 
-        self.model_dtype = model.layers[0].self_attn.k_proj.weight.dtype
+        if self.model_class == "SiglipEncoder":
+            self.model_dtype = model.layers[0].self_attn.k_proj.weight.dtype
+            
         self.device = "cuda"
         assert self.model_class in [
             "SiglipEncoder",

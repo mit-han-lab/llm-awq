@@ -144,6 +144,8 @@ class Qwen2AttentionFused(nn.Module):
         self.rope_scaling = config.rope_scaling
         if self.rope_scaling is None:
             self.rope_scaling = 1.0
+        elif isinstance(self.rope_scaling, dict):
+            self.rope_scaling = self.rope_scaling.get("factor", 1.0)
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
@@ -258,7 +260,7 @@ class Qwen2AttentionFused(nn.Module):
             xq = query_states.view(bsz, self.num_heads, self.head_dim)
             xk = key_states.view(bsz, self.num_key_value_heads, self.head_dim)
             xv = value_states.view(bsz, self.num_key_value_heads, self.head_dim)
-
+            
             output = awq_inference_engine.single_query_attention(
                 xq,
                 xk,
