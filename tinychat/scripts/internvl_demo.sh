@@ -14,5 +14,5 @@ python -m awq.entry --model_path $MODEL_PATH \
 # Run the TinyChat demo:
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python internvl_demo.py --model-path $MODEL_PATH \
     --quant_path quant_cache/$MODEL_NAME-w4-128-awq-v2.pt \
-    --media ../figures/vila-logo.jpg --act_scale_path $MODEL_NAME-smooth-scale.pt \
-    --max_seq_len 4096 --chunk --model_type internvl3 --quant_VT --quant_llm
+    --media ../figures/vila-logo.jpg --max_seq_len 4096 --chunk \
+    --model_type internvl3 --quant_VT --quant_llm
