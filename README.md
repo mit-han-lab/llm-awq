@@ -124,7 +124,19 @@ cd awq/kernels
 python setup.py install
 ```
 
-4. In order to run AWQ and TinyChat with NVILA model family, please install VILA:
+4. Install Flash Attention
+```
+pip install flash-attn --no-build-isolation
+```
+
+We recommend starting an interactive python CLI interface and run `import flash_attn` to check whether FlashAttention-2 is installed successfully. If not, we recommend downloading pre-built wheels from [here](https://github.com/Dao-AILab/flash-attention/releases/tag/v2.5.8). Please notice:
+
+- PyTorch version needs to exactly match with the version specified in the `.whl` name;
+- Check out both `cxx11abiTRUE` and `cxx11abiFALSE` wheels if one of them does not work;
+- It's recommended to match CUDA version specified in the `.whl` filename, but minor mismatches (e.g. 12.1 vs 12.2, or even 11.8 vs 12.2) usually do not matter.
+
+
+5. [Optional] In order to run AWQ and TinyChat with NVILA model family, please install VILA:
 
 ```bash
 git clone https://github.com/NVlabs/VILA.git

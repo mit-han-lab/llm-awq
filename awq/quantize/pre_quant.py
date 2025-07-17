@@ -9,7 +9,11 @@ from typing import List
 from transformers.models.bloom.modeling_bloom import BloomForCausalLM
 from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
-from tinychat.models import LlavaLlamaForCausalLM
+try:
+    from tinychat.models import LlavaLlamaForCausalLM
+except ImportError as e:
+    pass
+
 from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
 
 from .auto_scale import auto_scale_block, apply_scale
