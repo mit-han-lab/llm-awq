@@ -30,9 +30,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("w8a8_gemm_forward_cuda", &w8a8_gemm_forward_cuda, "our w8a8 gemm kernel");
     m.def("w8a8_gemm_fuse_bias_forward_cuda", &w8a8_gemm_fuse_bias_forward_cuda, "our w8a8 gemm fused bias kernel");
     m.def("invoke_quant", &invoke_quant, "fp16->int8 quantization");
-    m.def("rms_norm_general", &rms_norm_general, py::arg("out"), py::arg("input"),
+    m.def("layer_norm_general", &layer_norm_general, py::arg("out"), py::arg("input"),
         py::arg("weight"), py::arg("bias"),py::arg("scaling"), py::arg("epsilon"), py::arg("use_per_token_quant") = true,
-        "Apply Root Mean Square (RMS) Normalization to the input tensor (TRTLLM kernel).");
+        "Apply Layer Normalization to the input tensor (TRTLLM kernel) and quantize the tensor into 8 bits.");
     m.def("silu_and_mul", &silu_and_mul, "Activation function.");
     m.def("gelu_and_quant",&gelu_and_quant, "Apply gelu act and quant output");
 }

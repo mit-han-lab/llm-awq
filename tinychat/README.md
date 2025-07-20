@@ -184,7 +184,21 @@ Time-To-First-Token (TTFT) of Llama-2-7B (Unit: Seconds):
 | ----------- |:-------:|:-------:|:-------:|:-------:|:-------:|:-------:|
 | FP16        | 0.029	| 0.058   |	0.100   | 0.211   |	0.329   | 0.441   |
 | TinyChat    | 0.018   | 0.031   | 0.060   | 0.124   | 0.193   | 0.265   |
-| Speedup     | 1.57x   | 1.83x   | 1.66x   | 1.70x   | 1.70x   | 1.66x   |				
+| Speedup     | 1.57x   | 1.83x   | 1.66x   | 1.70x   | 1.70x   | 1.66x   |			
+
+Time-To-First-Token (TTFT) NVILA models processing 8-image inputs (Unit: seconds):
+
+| Model         | Precison | VisonTower | LLM   | Total  |
+|:---------------:|:----------:|:------------:|:------------:|:------------:|
+| NVILA-lite-2B | FP16     | 0.074      | 0.024 | 0.097  |
+|               | TinyChat | 0.045      | 0.016 | 0.060  |
+|               | Speedup  | 1.65x      | 1.52x | 1.62x  |
+| NVILA-lite-8B | FP16     | 0.073      | 0.098 | 0.172  |
+|               | TinyChat | 0.045      | 0.059 | 0.104  |
+|               | Speedup  | 1.63x      | 1.67x | 1.65x  |
+| NVILA-8B      | FP16     | 0.075      | 0.205 | 0.280  |
+|               | TinyChat | 0.046      | 0.122 | 0.168  |
+|               | Speedup  | 1.61x      | 1.69x | 1.66x  |
 
 
 #### Jetson Orin Results
@@ -196,6 +210,21 @@ Time-To-First-Token (TTFT) of Llama-3-8B (Unit: Seconds):
 | FP16        | 0.206   | 0.399   | 0.566   | 1.519   | 2.308   | 3.114   |
 | TinyChat    | 0.166   | 0.315   | 0.623   | 1.248   | 1.907   | 2.573   |
 | Speedup     | 1.24x   | 1.26x   | 0.91x   | 1.22x   | 1.21x   | 1.21x   |
+
+Time-To-First-Token (TTFT) NVILA models processing 8-image inputs (Unit: seconds):
+
+
+|  Model      | Precison   | VisonTower | LLM   | Total  |
+|:---------------:|:----------:|:------------:|:------------:|:------------:|
+| NVILA-lite-2B | FP16     | 0.449      | 0.155 | 0.605  |
+|               | TinyChat | 0.419      | 0.145 | 0.564  |
+|               | Speedup  | 1.07x      | 1.07x | 1.07x  |
+| NVILA-lite-8B | FP16     | 0.449      | 0.733 | 1.183  |
+|               | TinyChat | 0.419      | 0.620 | 1.040  |
+|               | Speedup  | 1.07x      | 1.18x | 1.14x  |
+| NVILA-8B      | FP16     | 0.449      | 1.798 | 2.247  |
+|               | TinyChat | 0.419      | 1.200 | 1.620  |
+|               | Speedup  | 1.07x      | 1.50x | 1.39x  |
 
 
 #### Comparison with Other Systems
@@ -500,11 +529,11 @@ python -m awq.entry --model_path PATH/TO/NVILA/llm \
 ```
 Next, try chatting with it using the command below to experience shorter Time To First Token (TTFT) and higher decoding throughput.
 ```bash
-python nvila_demo.py --model-path EPATH/TO/NVILA       \
+python nvila_demo.py --model-path PATH/TO/NVILA       \
     --quant_path PATH/TO/NVILA-w4-g128-v2.pt      \
     --media PATH/TO/MEDIA    \
     --act_scale_path PATH/TO/NVILA-smooth-scale.pt \
-    --quant_llm --chunk --model_type nvila
+    --all --chunk --model_type nvila
 ```
 
 

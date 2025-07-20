@@ -17,6 +17,6 @@ python -m awq.entry --model_path $MODEL_PATH/llm \
 # Run the TinyChat demo:
 python nvila_demo.py --model-path $MODEL_PATH    \
        --quant_path quant_cache/$MODEL_NAME-w4-g128-awq.pt      \
-       --media ../figures/nvila-logo.jpg     \
+       --media ../figures/vila-logo.jpg     \
        --act_scale_path awq_cache/$MODEL_NAME-smooth-scale.pt    \
        --all --chunk --model_type nvila --vis_image
