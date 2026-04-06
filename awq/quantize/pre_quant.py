@@ -191,6 +191,16 @@ def run_awq(
                 )
             )
         inps = inps.to(next(layer.parameters()).device)  # in case multi-gpu
+        # Regenerate position_ids to match input sequence length.
+        # In newer transformers (>=4.56), the captured position_ids from the
+        # Catcher may not match the expected shape, causing errors in
+        # apply_rotary_pos_emb (see issue #303).
+        if "position_ids" in layer_kwargs:
+            seq_len = inps.shape[1]
+            device = inps.device
+            layer_kwargs["position_ids"] = torch.arange(
+                seq_len, device=device
+            ).unsqueeze(0)
         # get output as next layer's input
         inps = layer(inps, **layer_kwargs)[0]
         for h in handles:
