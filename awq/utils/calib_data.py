@@ -14,7 +14,7 @@ def get_calib_dataset(data="pileval", tokenizer=None, n_samples=512, block_size=
         line = data["text"]
         line = line.strip()
         line_encoded = tokenizer.encode(line)
-        if len(line_encoded) > 512:
+        if len(line_encoded) > block_size:
             continue
         sample = torch.tensor([line_encoded])
         if sample.numel() == 0:
