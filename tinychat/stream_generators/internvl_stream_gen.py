@@ -70,7 +70,7 @@ def InternVLStreamGenerator(
         gen_params.temp, gen_params.repeat_penalty, gen_params.top_p, top_k
     )
     past_key_values = out = None
-    stop_token_ids.append(model.tokenizer.eos_token_id)
+    stop_token_ids = list(stop_token_ids) + [model.tokenizer.eos_token_id]
     max_new_tokens = gen_params.n_predict
 
     for i in range(max_new_tokens):
