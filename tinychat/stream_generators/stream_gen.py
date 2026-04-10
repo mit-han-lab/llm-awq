@@ -65,7 +65,7 @@ def StreamGenerator(
     )
 
     past_key_values = out = None
-    stop_token_ids.append(tokenizer.eos_token_id)
+    stop_token_ids = list(stop_token_ids) + [tokenizer.eos_token_id]
     max_new_tokens = gen_params.n_predict
     for i in range(max_new_tokens):
         torch.cuda.synchronize()
