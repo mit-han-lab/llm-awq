@@ -123,9 +123,9 @@ class FalconAttentionFused(nn.Module):
             .half()
         )  # added to half
 
-        self.rotary_emb = RotaryEmbedding(self.head_dim)
         self.rope_theta = args.rope_theta
         self.rope_scaling = args.rope_scaling
+        self.rotary_emb = RotaryEmbedding(self.head_dim, base=self.rope_theta)
         if self.rope_scaling is None:
             self.rope_scaling = 1.0
         else:
