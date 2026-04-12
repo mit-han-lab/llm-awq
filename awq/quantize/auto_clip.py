@@ -38,7 +38,7 @@ def auto_clip_layer(
         input_feat = input_feat.to(w.device)
         org_out = (input_feat * w).sum(dim=-1)  # co, n_token, n_group
 
-        for i_s in range(int(max_shrink * n_grid)):
+        for i_s in range(int(max_shrink * n_grid) + 1):
             max_val = org_max_val * (1 - i_s / n_grid)
             min_val = -max_val
             cur_w = torch.clamp(w, min_val, max_val)
