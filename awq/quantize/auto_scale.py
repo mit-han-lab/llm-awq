@@ -62,7 +62,7 @@ def scale_fc_fc(fc1, fc2, scales):
     # fc1.weight.div_(scales.view(-1, 1))
     fc1.weight[-scales.size(0) :].div_(scales.view(-1, 1))
     if fc1.bias is not None:
-        fc1.bias.div_(scales.view(-1))
+        fc1.bias[-scales.size(0) :].div_(scales.view(-1))
 
     fc2.weight.mul_(scales.view(1, -1))
 
