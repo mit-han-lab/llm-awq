@@ -66,7 +66,7 @@ def move_embed(model, device):
             model.language_model.model.rotary_emb.to(device)
         )
         model.vision_model.embeddings.to(device)
-    elif isinstance(model, LlavaLlamaForCausalLM):
+    elif model.__class__.__name__ == "LlavaLlamaForCausalLM":
         model.model.embed_tokens = model.model.embed_tokens.to(device)
         model.model.vision_tower.vision_tower.vision_model.embeddings.to(device)
     elif isinstance(model, OPTForCausalLM):
