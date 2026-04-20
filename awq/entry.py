@@ -345,12 +345,12 @@ def main():
 
             print(evaluator.make_table(results))
 
-        if args.output_path is not None:
-            os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
-            # otherwise cannot save
-            results["config"]["model"] = args.model_path
-            with open(args.output_path, "w") as f:
-                json.dump(results, f, indent=2)
+            if args.output_path is not None:
+                os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
+                # otherwise cannot save
+                results["config"]["model"] = args.model_path
+                with open(args.output_path, "w") as f:
+                    json.dump(results, f, indent=2)
 
 
 if __name__ == "__main__":
