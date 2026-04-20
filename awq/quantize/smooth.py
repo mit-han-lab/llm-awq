@@ -218,7 +218,8 @@ def smooth_ln_fcs(ln, fcs, act_scales, alpha=0.5):
     )
 
     ln.weight.div_(scales)
-    ln.bias.div_(scales)
+    if hasattr(ln, "bias") and ln.bias is not None:
+        ln.bias.div_(scales)
 
     for fc in fcs:
         fc.weight.mul_(scales.view(1, -1))
