@@ -66,14 +66,14 @@ class QuantLlamaMLP(nn.Module):
                 x,
                 self.gate_proj_qweight,
                 self.gate_proj_scales,
-                self.gate_proj_scaled_zeros - 8 * self.gate_proj_scales,
+                self.gate_proj_scaled_zeros,
                 # self.gate_cuda_semaphores
             )
             up_output = awq_inference_engine.gemm_forward_cuda_new(
                 x,
                 self.up_proj_qweight,
                 self.up_proj_scales,
-                self.up_proj_scaled_zeros - 8 * self.up_proj_scales,
+                self.up_proj_scaled_zeros,
                 # self.up_cuda_semaphores
             )
             gate_output = F.silu(gate_output)
