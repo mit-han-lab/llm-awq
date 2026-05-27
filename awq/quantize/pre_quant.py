@@ -68,6 +68,7 @@ def move_embed(model, device):
         model.vision_model.embeddings.to(device)
     elif isinstance(model, LlavaLlamaForCausalLM):
         model.model.embed_tokens = model.model.embed_tokens.to(device)
+        model.model.rotary_emb = model.model.rotary_emb.to(device)
         model.model.vision_tower.vision_tower.vision_model.embeddings.to(device)
     elif isinstance(model, OPTForCausalLM):
         model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.to(device)
