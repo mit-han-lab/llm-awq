@@ -1,37 +1,30 @@
 /*
- * Modified from NVIDIA [TRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/tree/d37b507f41a87457fe9f10f7459d08f5db235745/cpp/tensorrt_llm/kernels/weightOnlyBatchedGemv)
- * Copyright (c) 2022-2024, NVIDIA CORPORATION.  All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * ROCm-LLM-AWQ AMD port: quantization_new/gemv/gemv_cuda.cu
+ * AMD changes: DISPATCH macro handles bfloat16; kernel is device-only.
  */
+#include "hip_compat.h"
 
-/*
-@article{lin2023awq,
-  title={AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration},
-  author={Lin, Ji and Tang, Jiaming and Tang, Haotian and Yang, Shang and Dang, Xingyu and Han, Song},
-  journal={arXiv},
-  year={2023}
+#if defined(__HIP_PLATFORM_AMD__)
+// AMD helper: broadcast public hip_bfloat16 to nv_bfloat162 pair.
+// ROCm 7.2.4: hip_bfloat16 (amd_hip_bfloat16.h) and __hip_bfloat16 (amd_hip_bf16.h)
+// are separate structs with identical layout. amd_hip_bf16.h provides
+// __bfloat162bfloat162(__hip_bfloat16). We provide an overload for hip_bfloat16.
+// The parameter type differs so this is a valid overload (no redefinition conflict).
+inline __host__ __device__ nv_bfloat162 __bfloat162bfloat162(hip_bfloat16 v) {
+    // Both structs are 16-bit; memcpy is safe for same-layout trivial types.
+    __hip_bfloat16 hv;
+    __builtin_memcpy(&hv, &v, sizeof(__hip_bfloat16));
+    return __bfloat162bfloat162(hv);  // Call amd_hip_bf16.h version
 }
-*/
+#endif
 
-#include <cuda_fp16.h>
-#include <stdio.h>
+
 #include <torch/extension.h>
 #include "gemv_cuda.h"
 #include "../dequantize.cuh"
 #include "../dispatch_utils.cuh"
 #define PACK_FACTOR 8
-#define WARP_SIZE 32
+// WARP_SIZE set to 64 by hip_compat.h for AMD CDNA (was erroneously 32)
 #define MEM_ACCESS_SIZE 128
 
 // Reduce sum within the warp using the tree reduction algorithm.
@@ -50,9 +43,9 @@ __device__ __forceinline__ static void warp_reduce(T* psum, float (*out_smem)[Nu
       for (int i = 0; i < Num; ++i)
       {
           // T0 + T1 + T8 + T9 + T16 + T17 + T24 + T25 (kInterleave = 4)
-          fpsum[i] += __shfl_xor_sync(~0, fpsum[i], 16);
-          fpsum[i] += __shfl_xor_sync(~0, fpsum[i], 8);
-          fpsum[i] += __shfl_xor_sync(~0, fpsum[i], 1);
+          fpsum[i] += __shfl_xor(fpsum[i], 16);
+          fpsum[i] += __shfl_xor(fpsum[i], 8);
+          fpsum[i] += __shfl_xor(fpsum[i], 1);
       }
       __syncthreads();
       int warp = threadIdx.x / WarpSize, lane = threadIdx.x % WarpSize;
@@ -87,7 +80,7 @@ __global__ void gemv_kernel(
         nv_bfloat162
     >::type;
 
-    static constexpr int kShuffleSize = 32;
+    static constexpr int kShuffleSize = WARP_SIZE;  // AMD wavefront=64
     static constexpr int kShuffleBasicTile = 2;
     static constexpr int kShuffleContinous = 4;
     static constexpr int kShuffleStrided = 4;
@@ -162,7 +155,9 @@ __global__ void gemv_kernel(
                     }
                     else
                     {
+#if defined(__HIP_DEVICE_COMPILE__)
                       w = __hfma2(w, __bfloat162bfloat162(local_scale[idx]), __bfloat162bfloat162(local_scaled_zeros[idx]));
+#endif
                     }
                     dequantized_weight[((i * kShuffleStrided + j) * kShuffleBasicTile + 0) 
                           * NPerBlock + idx]
@@ -199,10 +194,12 @@ __global__ void gemv_kernel(
                     }
                     else
                     {
+#if defined(__HIP_DEVICE_COMPILE__)
                       *reinterpret_cast<nv_bfloat162*>(psum + batch_idx * NPerBlock + x * 2)
                           = __hfma2(*reinterpret_cast<nv_bfloat162*>(dequantized_weight + y * NPerBlock + x * 2),
                               __bfloat162bfloat162(local_inputs[y]),
                               *reinterpret_cast<nv_bfloat162*>(psum + batch_idx * NPerBlock + x * 2));   
+#endif
                     }
                 }
             }
@@ -272,7 +269,7 @@ torch::Tensor gemv_forward_cuda_new(
       
       static constexpr int N_PER_BLOCK = 2;
       static constexpr int K_INTERLEAVE = 4;
-      static constexpr int BLOCK_SIZE = 256;
+      static constexpr int BLOCK_SIZE = 512;  // OPT: 8 wavefronts/CU on AMD MI300X
 
       dim3 num_blocks(n / N_PER_BLOCK / K_INTERLEAVE);
       dim3 num_threads(BLOCK_SIZE);
