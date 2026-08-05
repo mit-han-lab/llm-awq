@@ -203,7 +203,14 @@ class WQLinear(nn.Module):
         # out_shape = x.shape[:-1] + (self.out_features,)
         # inputs = x.reshape(-1, x.shape[-1])
         inputs = x
-        if inputs.numel() / inputs.shape[-1] < 8:
+        # GEMV path is unsafe for short prefills (tokens < 8, tokens != 1).
+        # Use GEMV only for decode-like shapes: n_tokens == 1 and small batch (#170).
+        if inputs.ndim >= 3:
+            batch_size, n_tokens = inputs.shape[0], inputs.shape[1]
+            use_gemv = batch_size < 8 and n_tokens == 1
+        else:
+            use_gemv = inputs.shape[0] < 8
+        if use_gemv:
             out = awq_inference_engine.gemv_forward_cuda_new(
                 inputs,
                 self.qweight,
