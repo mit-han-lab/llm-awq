@@ -34,9 +34,13 @@ class QuantLlamaMLP(nn.Module):
         return self.down_proj(self.our_llama_mlp(x))
 
     def our_llama_mlp(self, x):
-        # out_shape = x.shape[:-1] + (self.intermediate_size,)
-        # x = x.reshape(-1, x.shape[-1])
-        if x.numel() // x.shape[-1] < 8:
+        # GEMV is unsafe for short prefills (tokens < 8, tokens != 1); #170.
+        if x.ndim >= 3:
+            batch_size, n_tokens = x.shape[0], x.shape[1]
+            use_gemv = batch_size < 8 and n_tokens == 1
+        else:
+            use_gemv = x.shape[0] < 8
+        if use_gemv:
             gate_output = awq_inference_engine.gemv_forward_cuda_new(
                 x,
                 self.gate_proj_qweight,
