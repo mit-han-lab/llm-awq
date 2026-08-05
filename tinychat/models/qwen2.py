@@ -145,7 +145,8 @@ class Qwen2AttentionFused(nn.Module):
         if self.rope_scaling is None:
             self.rope_scaling = 1.0
         elif isinstance(self.rope_scaling, dict):
-            self.rope_scaling = self.rope_scaling.get("factor", 1.0)
+            # Match Transformer prefills: kernel expects 1/factor.
+            self.rope_scaling = 1.0 / self.rope_scaling.get("factor", 1.0)
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
