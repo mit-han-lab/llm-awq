@@ -139,7 +139,8 @@ def run_awq(
             super().__init__()
             self.module = module
 
-        def forward(self, inp, **kwargs):
+        def forward(self, inp, *args, **kwargs):
+            # Some models (e.g. ChatGLM) pass extra positional args beyond inp.
             inps.append(inp)
             layer_kwargs.update(kwargs)
             raise ValueError  # early exit to break later inference
