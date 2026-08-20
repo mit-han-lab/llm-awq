@@ -155,7 +155,9 @@ class LlamaAttentionFused(nn.Module):
         )  # added to half
         # dummy
         self.rotary_emb = LlamaRotaryEmbedding(
-            self.head_dim, max_position_embeddings=2048, device="cuda:0"
+            self.head_dim,
+            max_position_embeddings=self.max_position_embeddings,
+            device=dev,
         )
 
     def forward(

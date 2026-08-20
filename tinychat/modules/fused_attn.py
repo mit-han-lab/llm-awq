@@ -96,7 +96,7 @@ class QuantLlamaAttention(nn.Module):
         self.qkv_proj = qkv_proj
         self.o_proj = o_proj
         self.rotary_emb = QuantLlamaRotaryEmbedding(
-            self.head_dim, max_position_embeddings=2048, device=dev
+            self.head_dim, max_position_embeddings=max_seq_len, device=dev
         )
 
     def forward(
