@@ -138,7 +138,7 @@ class Qwen2AttentionFused(nn.Module):
         self.num_key_value_heads = config.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = config.max_position_embeddings
-        self.rope_theta = config.rope_theta
+        self.rope_theta = getattr(config, "rope_theta", 10000.0)
         self.is_causal = True
         self.attention_dropout = config.attention_dropout
         self.rope_scaling = config.rope_scaling
@@ -340,21 +340,22 @@ class Qwen2Model(nn.Module):
         )
         self.norm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         # Note (Haotian): rope_theta has to be defined here, otherwise context stage is wrong.
+        rope_theta = getattr(config, "rope_theta", 10000.0)
         rope_scale = config.rope_scaling
         if rope_scale is None:
             rope_scale = 1.0
         else:
-            rope_scale = 1.0 / rope_scale["factor"]
+            rope_scale = 1.0 / rope_scale.get("factor", 1.0)
         self.freqs = precompute_freqs(
             config.hidden_size // config.num_attention_heads,
             config.max_position_embeddings * 2,
-            config.rope_theta,
+            rope_theta,
             rope_scale,
         )
         self.freqs_cis = precompute_freqs_cis(
             config.hidden_size // config.num_attention_heads,
             config.max_position_embeddings * 2,
-            config.rope_theta,
+            rope_theta,
             rope_scale,
         )
 
