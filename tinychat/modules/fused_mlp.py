@@ -59,22 +59,31 @@ class QuantLlamaMLP(nn.Module):
                 self.down_proj.group_size,
             )
         else:
-            # num_mn_tiles = (x.shape[0] // 32) * (self.intermediate_size // 128)
-            # cuda_Semaphores_gate = torch.empty(num_mn_tiles).int().to(x.device)
-            # cuda_Semaphores_up = torch.empty(num_mn_tiles).int().to(x.device)
-            gate_output = awq_inference_engine.gemm_forward_cuda_new(
+            # Prefer new kernel; fall back for older builds (#153).
+            def _gemm(x, qw, scales, zeros):
+                gemm = getattr(awq_inference_engine, "gemm_forward_cuda_new", None)
+                if gemm is not None:
+                    return gemm(x, qw, scales, zeros)
+                return awq_inference_engine.gemm_forward_cuda(
+                    x,
+                    qw,
+                    scales,
+                    zeros,
+                    self.down_proj.group_size,
+                    getattr(self.down_proj, "split_k_iters", 8),
+                )
+
+            gate_output = _gemm(
                 x,
                 self.gate_proj_qweight,
                 self.gate_proj_scales,
                 self.gate_proj_scaled_zeros - 8 * self.gate_proj_scales,
-                # self.gate_cuda_semaphores
             )
-            up_output = awq_inference_engine.gemm_forward_cuda_new(
+            up_output = _gemm(
                 x,
                 self.up_proj_qweight,
                 self.up_proj_scales,
                 self.up_proj_scaled_zeros - 8 * self.up_proj_scales,
-                # self.up_cuda_semaphores
             )
             gate_output = F.silu(gate_output)
 

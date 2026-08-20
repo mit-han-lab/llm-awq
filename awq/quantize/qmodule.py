@@ -204,7 +204,14 @@ class WQLinear(nn.Module):
         # inputs = x.reshape(-1, x.shape[-1])
         inputs = x
         if inputs.numel() / inputs.shape[-1] < 8:
-            out = awq_inference_engine.gemv_forward_cuda_new(
+            gemv = getattr(
+                awq_inference_engine, "gemv_forward_cuda_new", None
+            ) or getattr(awq_inference_engine, "gemv_forward_cuda", None)
+            if gemv is None:
+                raise AttributeError(
+                    "awq_inference_engine has neither gemv_forward_cuda_new nor gemv_forward_cuda"
+                )
+            out = gemv(
                 inputs,
                 self.qweight,
                 self.scales,
@@ -215,9 +222,21 @@ class WQLinear(nn.Module):
                 self.group_size,
             )
         else:
-            out = awq_inference_engine.gemm_forward_cuda_new(
-                inputs, self.qweight, self.scales, self.scaled_zeros
-            )  # - 8.0 * self.scales)
+            # Prefer new kernel; fall back for older builds (#153).
+            gemm = getattr(
+                awq_inference_engine, "gemm_forward_cuda_new", None
+            )
+            if gemm is not None:
+                out = gemm(inputs, self.qweight, self.scales, self.scaled_zeros)
+            else:
+                out = awq_inference_engine.gemm_forward_cuda(
+                    inputs,
+                    self.qweight,
+                    self.scales,
+                    self.scaled_zeros,
+                    self.group_size,
+                    self.split_k_iters,
+                )
         out = out + self.bias if self.bias is not None else out
         # print(out)
         # assert 0
