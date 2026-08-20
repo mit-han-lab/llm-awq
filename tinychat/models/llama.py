@@ -9,6 +9,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import awq_inference_engine
+from transformers import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
 # from flash_attn.flash_attn_interface import flash_attn_unpadded_func
@@ -153,10 +154,9 @@ class LlamaAttentionFused(nn.Module):
             .cuda()
             .half()
         )  # added to half
-        # dummy
-        self.rotary_emb = LlamaRotaryEmbedding(
-            self.head_dim, max_position_embeddings=2048, device="cuda:0"
-        )
+        # dummy (LlamaConfig required for transformers >= 4.48)
+        rotary_cfg = LlamaConfig(head_dim=self.head_dim, max_position_embeddings=2048)
+        self.rotary_emb = LlamaRotaryEmbedding(rotary_cfg, device="cuda:0")
 
     def forward(
         self,
