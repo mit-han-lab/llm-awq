@@ -138,7 +138,7 @@ class QuantLlamaAttention(nn.Module):
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
 
-        value_states = value_states.to("cuda:0")
+        value_states = value_states.to(hidden_states.device)
 
         if past_key_value is not None:
             # reuse k, v, self_attention
