@@ -186,7 +186,8 @@ class QuantLlamaAttentionFused(nn.Module):
         if self.rope_scaling is None:
             self.rope_scaling = 1.0
         if isinstance(self.rope_scaling, dict):
-            self.rope_scaling = self.rope_scaling.get("factor", 1.0)
+            # Match llama.py: HF rope_scaling.factor is inverted for RoPE freqs.
+            self.rope_scaling = 1.0 / self.rope_scaling.get("factor", 1.0)
 
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
@@ -348,7 +349,8 @@ class QuantLlamaAttentionFusedFlash(nn.Module):
         if self.rope_scaling is None:
             self.rope_scaling = 1.0
         elif isinstance(self.rope_scaling, dict):
-            self.rope_scaling = self.rope_scaling.get("factor", 1.0)
+            # Match llama.py: HF rope_scaling.factor is inverted for RoPE freqs.
+            self.rope_scaling = 1.0 / self.rope_scaling.get("factor", 1.0)
 
         self.qkv_proj = qkv_layer
         self.o_proj = o_proj
