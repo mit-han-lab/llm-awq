@@ -124,7 +124,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
         n_grid = 20
         history = []
 
-        org_sd = {k: v.cpu() for k, v in block.state_dict().items()}
+        org_sd = {k: v.detach().cpu().clone() for k, v in block.state_dict().items()}
         for ratio in range(n_grid):
             ratio = ratio * 1 / n_grid
             scales = x_max.pow(ratio).clamp(min=1e-4).view(-1)
