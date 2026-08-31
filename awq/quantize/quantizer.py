@@ -73,8 +73,7 @@ def pseudo_quantize_tensor(
         min_int = 0
         scales = (max_val - min_val).clamp(min=1e-5) / max_int
         zeros = (-torch.round(min_val / scales)).clamp_(min_int, max_int)
-    else:  # we actually never used this
-        assert min_val is None
+    else:  # symmetric quantization (no zero-point)
         max_val = w.abs().amax(dim=1, keepdim=True)
         max_val = max_val.clamp(min=1e-5)
         max_int = 2 ** (n_bit - 1) - 1
