@@ -20,7 +20,7 @@ def auto_clip_layer(
     )
     input_feat = input_feat.view(-1, input_feat.shape[-1])
     input_feat = input_feat.reshape(1, input_feat.shape[0], -1, group_size)
-    input_feat = input_feat[:, 0 :: input_feat.shape[1] // n_sample_token]
+    input_feat = input_feat[:, 0 :: max(1, input_feat.shape[1] // n_sample_token)]
     w = w.reshape(w.shape[0], 1, -1, group_size)
 
     oc_batch_size = 256 if w.shape[0] % 256 == 0 else 64  # prevent OOM
