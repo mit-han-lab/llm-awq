@@ -229,13 +229,11 @@ class FakeW8A8Linear(torch.nn.Module):
         self.maxv = 2 ** (wbit - 1) - 1
 
     def forward(self, input):
-        t_shape = input.shape
-        input.view(-1, t_shape[-1])
-        scales = input.abs().max(dim=-1, keepdim=True)[0]
-        scales.clamp_(min=1e-5).div_(self.maxv)
-        input.div_(scales).round_().mul_(scales)
-        output = torch.functional.F.linear(input, self.weight, self.bias)
-        return output
+        # Fake-quantize a clone so residual / shared activations stay intact.
+        x = input
+        scales = x.abs().amax(dim=-1, keepdim=True).clamp(min=1e-5).div(self.maxv)
+        x = x.div(scales).round().mul(scales)
+        return torch.nn.functional.linear(x, self.weight, self.bias)
 
     @classmethod
     def from_linear(cls, linear: torch.nn.Linear, wbit=8):
