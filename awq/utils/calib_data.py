@@ -14,7 +14,7 @@ def get_calib_dataset(data="pileval", tokenizer=None, n_samples=512, block_size=
         line = data["text"]
         line = line.strip()
         line_encoded = tokenizer.encode(line)
-        if len(line_encoded) > 512:
+        if len(line_encoded) > block_size:
             continue
         sample = torch.tensor([line_encoded])
         if sample.numel() == 0:
@@ -23,6 +23,10 @@ def get_calib_dataset(data="pileval", tokenizer=None, n_samples=512, block_size=
         n_run += 1
         if n_run == n_samples:
             break
+    if not samples:
+        raise RuntimeError(
+            "No calibration samples collected; check tokenizer/data/block_size"
+        )
     # now concatenate all samples and split according to block size
     cat_samples = torch.cat(samples, dim=1)
     n_split = cat_samples.shape[1] // block_size
