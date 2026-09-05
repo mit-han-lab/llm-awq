@@ -42,7 +42,9 @@ def scale_activations(module):
     elif "bigcode" in str(module.__class__).lower():
         if isinstance(module.mlp.act, ScaledActivation):
             return
-        c = module.mlp.c_proj.out_features
+        # Activation is between c_fc (hidden->intermediate) and c_proj
+        # (intermediate->hidden); scales must match intermediate width.
+        c = module.mlp.c_fc.out_features
         act = ScaledActivation(
             module.mlp.act, torch.ones(c, dtype=dtype, device=device)
         )
