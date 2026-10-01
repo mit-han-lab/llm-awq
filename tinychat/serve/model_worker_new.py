@@ -164,7 +164,6 @@ class ModelWorker:
                     ],
                 ).to(device)
             model = model.to(args.device)
-            model.eval()
 
         elif precision == "W4A16":
             from tinychat.utils.load_quant import load_awq_model
@@ -181,7 +180,7 @@ class ModelWorker:
         else:
             raise NotImplementedError(f"Precision {precision} is not supported.")
 
-        self.model = model
+        self.model = model.eval()
         self.is_multimodal = (
             "llava" in self.model_name.lower() or "vila" in self.model_name.lower()
         )
