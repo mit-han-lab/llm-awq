@@ -152,6 +152,8 @@ class WQLinear(nn.Module):
         if init_only:  # just prepare for loading sd
             return awq_linear
 
+        group_size = awq_linear.group_size
+
         # need scales and zeros info for real quantization
         assert scales is not None and zeros is not None
         scale_zeros = zeros * scales
