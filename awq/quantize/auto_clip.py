@@ -42,7 +42,10 @@ def auto_clip_layer(
             max_val = org_max_val * (1 - i_s / n_grid)
             min_val = -max_val
             cur_w = torch.clamp(w, min_val, max_val)
-            q_w = pseudo_quantize_tensor(cur_w, n_bit=n_bit, **q_config)
+            # Quantize rows even when q_group_size=-1 (per-channel).
+            q_w = pseudo_quantize_tensor(
+                cur_w.reshape(-1, group_size), n_bit=n_bit, **q_config
+            ).reshape(cur_w.shape)
             cur_out = (input_feat * q_w).sum(dim=-1)
 
             # co, 1, n_group, 1
