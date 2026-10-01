@@ -169,7 +169,7 @@ class ModelWorker:
         else:
             raise NotImplementedError(f"Precision {precision} is not supported.")
 
-        self.model = model
+        self.model = model.eval()
         self.is_multimodal = (
             "llava" in self.model_name.lower() or "vila" in self.model_name.lower()
         )
