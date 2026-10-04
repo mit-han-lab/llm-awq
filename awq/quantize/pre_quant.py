@@ -11,8 +11,8 @@ from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 try:
     from tinychat.models import LlavaLlamaForCausalLM
-except ImportError as e:
-    pass
+except ImportError:
+    LlavaLlamaForCausalLM = None
 
 from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
 
@@ -66,7 +66,7 @@ def move_embed(model, device):
             model.language_model.model.rotary_emb.to(device)
         )
         model.vision_model.embeddings.to(device)
-    elif isinstance(model, LlavaLlamaForCausalLM):
+    elif LlavaLlamaForCausalLM is not None and isinstance(model, LlavaLlamaForCausalLM):
         model.model.embed_tokens = model.model.embed_tokens.to(device)
         model.model.vision_tower.vision_tower.vision_model.embeddings.to(device)
     elif isinstance(model, OPTForCausalLM):

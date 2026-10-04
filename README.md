@@ -173,6 +173,8 @@ The detailed support list:
 
 Note: We only list models that we have prepare the [AWQ searching results](https://huggingface.co/datasets/mit-han-lab/awq-model-zoo/tree/main) in the table above. AWQ also supports models such as LLaVA-v1.5 7B, and you may need to run the [AWQ search](#usage) on your own to quantize these models. For our latest VLM NVILA, quantized weights are available [here](https://huggingface.co/Efficient-Large-Model/NVILA-AWQ).
 
+GPTNeoXForCausalLM models (including Pythia) are also handled by the AWQ search and quantization code. Use the `awq.entry` commands below with the model path and run AWQ search to produce calibration results. VILA is optional for these text-only models; this does not add a GPTNeoX model implementation to TinyChat.
+
 ## Examples
 
 AWQ can be easily applied to various LMs thanks to its good generalization, including instruction-tuned models and multi-modal LMs. It provides an easy-to-use tool to reduce the serving cost of LLMs.
