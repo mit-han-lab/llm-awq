@@ -20,6 +20,8 @@ python -m tinychat.serve.model_worker_new --host 0.0.0.0 --controller http://loc
 # Please change tinychat.serve.model_worker_new to tinychat.serve.model_worker if you want to serve VILA rather than VILA-1.5
 ```
 
+After a worker starts, click **Refresh models** in the web interface to update the Model dropdown. This also removes workers that are no longer registered, while preserving the selected model if it is still available.
+
 Note: You can launch multiple model workers onto the same web server. And please remember to specify different ports for each model worker.
 
 ### Acknowlegement
