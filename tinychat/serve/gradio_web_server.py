@@ -114,6 +114,15 @@ def load_demo_refresh_model_list(prompt_style_btn, request: gr.Request):
     return state, dropdown_update
 
 
+def refresh_model_list(selected_model, request: gr.Request):
+    logger.info(f"refresh_model_list. ip: {request.client.host}")
+    available_models = get_model_list()
+    value = selected_model if selected_model in available_models else (
+        available_models[0] if available_models else ""
+    )
+    return gr.Dropdown.update(choices=available_models, value=value)
+
+
 # def vote_last_response(state, vote_type, model_selector, request: gr.Request):
 #     with open(get_conv_log_filename(), "a") as fout:
 #         data = {
@@ -687,6 +696,7 @@ def build_demo(embed_mode):
                             show_label=True,
                             container=False,
                         )
+                        refresh_models_btn = gr.Button(value="Refresh models")
                     with gr.Column(scale=1, min_width=50):
                         prompt_style_btn = gr.Radio(
                             ["default", "no-sys"],
@@ -1029,6 +1039,13 @@ def build_demo(embed_mode):
             gr.Markdown(learn_more_markdown)
             gr.Markdown(ack_markdown)
         url_params = gr.JSON(visible=False)
+
+        refresh_models_btn.click(
+            refresh_model_list,
+            [model_selector],
+            [model_selector],
+            queue=False,
+        )
 
         # Register listeners
         # btn_list = [upvote_btn, downvote_btn, flag_btn, regenerate_btn, clear_btn]
