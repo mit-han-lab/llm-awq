@@ -115,7 +115,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
             if isinstance(org_out, tuple):
                 org_out = org_out[0]
 
-        x_max = get_act_scale(x)
+        x_max = get_act_scale(x).float()
 
         best_error = float("inf")
         best_ratio = -1
@@ -128,7 +128,8 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
         for ratio in range(n_grid):
             ratio = ratio * 1 / n_grid
             scales = x_max.pow(ratio).clamp(min=1e-4).view(-1)
-            scales = scales / (scales.max() * scales.min()).sqrt()
+            # Normalize in FP32: the product can underflow for FP16 activations.
+            scales = (scales / (scales.max() * scales.min()).sqrt()).to(x.dtype)
             for fc in linears2scale:
                 fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
                 fc.weight.data = w_quantize_func(fc.weight.data) / (scales.view(1, -1))
