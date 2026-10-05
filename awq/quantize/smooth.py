@@ -46,12 +46,13 @@ def get_act_scales(model, data):
                 m.register_forward_hook(functools.partial(stat_input_hook, name=name))
             )
 
-    for i in tqdm(range(num_samples)):
-        input = data[i : i + 1]
-        model(input)
-
-    for h in hooks:
-        h.remove()
+    try:
+        for i in tqdm(range(num_samples)):
+            input = data[i : i + 1]
+            model(input)
+    finally:
+        for h in hooks:
+            h.remove()
 
     return act_scales
 
@@ -89,13 +90,15 @@ def get_static_decoder_layer_scales(
     for name, m in model.named_modules():
         if isinstance(m, torch.nn.Linear):
             hooks.append(m.register_forward_hook(partial(stat_io_hook, name=name)))
-    pbar = tqdm(range(num_samples))
-    for i in pbar:
-        model(data[i : i + 1])
-        mean_scale = np.mean([v["input"] for v in act_dict.values()])
-        pbar.set_description(f"Mean input scale: {mean_scale:.2f}")
-    for hook in hooks:
-        hook.remove()
+    try:
+        pbar = tqdm(range(num_samples))
+        for i in pbar:
+            model(data[i : i + 1])
+            mean_scale = np.mean([v["input"] for v in act_dict.values()])
+            pbar.set_description(f"Mean input scale: {mean_scale:.2f}")
+    finally:
+        for hook in hooks:
+            hook.remove()
     decoder_layer_scales = []
     for idx in range(model.config.num_hidden_layers):
         scale_dict = {}
