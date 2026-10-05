@@ -27,7 +27,7 @@ def get_act_scales(model, data):
 
     def stat_tensor(name, tensor):
         hidden_dim = tensor.shape[-1]
-        tensor = tensor.view(-1, hidden_dim).abs().detach()
+        tensor = tensor.reshape(-1, hidden_dim).abs().detach()
         comming_max = torch.max(tensor, dim=0)[0].float().cpu()
         if name in act_scales:
             act_scales[name] = torch.max(act_scales[name], comming_max)
