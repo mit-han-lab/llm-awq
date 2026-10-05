@@ -61,7 +61,7 @@ def get_static_decoder_layer_scales(
     model,
     data,
 ):
-    num_samples = data.shape[1]
+    num_samples = data.shape[0]
     model.eval()
     device = next(model.parameters()).device
 
