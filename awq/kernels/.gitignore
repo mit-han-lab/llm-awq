@@ -1,0 +1,10 @@
+# torch hipify build artifacts (ROCm): generated copies of the CUDA sources
+*.hip
+*_hip.h
+*_hip.cuh
+*_hip.hpp
+*_hip.cpp
+hip_bf16_fallbacks.cuh
+hip_bf16_wrapper.h
+# offload bundles emitted alongside the built extension
+*.so.*

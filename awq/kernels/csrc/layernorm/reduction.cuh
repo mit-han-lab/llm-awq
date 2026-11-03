@@ -19,6 +19,15 @@ https://github.com/NVIDIA/FasterTransformer/blob/main/src/fastertransformer/kern
 static const float HALF_FLT_MAX = 65504.F;
 #define FINAL_MASK 0xffffffff
 
+// Width-32 logical-warp xor shuffle. On HIP the sync variant needs a 64-bit
+// mask (a 32-bit literal fails a static_assert); the width-32 form is a
+// logical-32 subgroup reduce on both wave32 and wave64.
+#if defined(__HIP_PLATFORM_AMD__)
+#define AWQ_SHFL_XOR_32(val, offset) __shfl_xor((val), (offset), 32)
+#else
+#define AWQ_SHFL_XOR_32(val, offset) __shfl_xor_sync(FINAL_MASK, (val), (offset), 32)
+#endif
+
 
 template<typename T>
 inline __device__ T add(T a, T b) {
@@ -40,7 +49,7 @@ __inline__ __device__ T warpReduceSum(T val)
 {
 #pragma unroll
     for (int mask = 16; mask > 0; mask >>= 1)
-        val = add(val, __shfl_xor_sync(FINAL_MASK, val, mask, 32));  //__shfl_sync bf16 return float when sm < 80
+        val = add(val, AWQ_SHFL_XOR_32(val, mask));  //__shfl_sync bf16 return float when sm < 80
     return val;
 }
 

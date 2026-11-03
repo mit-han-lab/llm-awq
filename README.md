@@ -124,6 +124,8 @@ cd awq/kernels
 python setup.py install
 ```
 
+* For **AMD GPUs**, the same command builds the kernels with ROCm. Install a ROCm build of PyTorch first, and keep step 2 from replacing it with the CUDA wheels pinned in [pyproject.toml](pyproject.toml). The kernels are compiled for the GPUs on the build machine; set `PYTORCH_ROCM_ARCH` (e.g. `gfx90a;gfx942;gfx1100`) to choose other targets. The kernels need ROCm 5.7 or newer; the W8A8 GEMM uses hipBLASLt on ROCm 6.0 and newer and a slower portable kernel on ROCm 5.7. FlashAttention (step 4) also supports ROCm; see its repository for the AMD build instructions.
+
 4. Install Flash Attention
 ```
 pip install flash-attn --no-build-isolation

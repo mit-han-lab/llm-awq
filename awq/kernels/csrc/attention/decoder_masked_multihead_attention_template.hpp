@@ -25,6 +25,16 @@
 #include <float.h>
 #include <type_traits>
 
+// The warp reductions below work on 32-lane warps. HIP's sync shuffles need a 64-bit lane mask,
+// and a 64-lane wavefront holds two such warps, so pass the width of 32 explicitly there.
+#if defined(__HIP_PLATFORM_AMD__)
+#define MMHA_SHFL_XOR(mask, var, lane_mask) __shfl_xor((var), (lane_mask), 32)
+#define MMHA_SHFL(mask, var, src_lane) __shfl((var), (src_lane), 32)
+#else
+#define MMHA_SHFL_XOR(mask, var, lane_mask) __shfl_xor_sync((mask), (var), (lane_mask))
+#define MMHA_SHFL(mask, var, src_lane) __shfl_sync((mask), (var), (src_lane))
+#endif
+
 // #define MMHA_USE_HMMA_FOR_REDUCTION
 
 // Below are knobs to extend FP32 accumulation for higher FP16 accuracy
@@ -386,7 +396,7 @@ inline __device__ float qk_dot_(const K_vec (&q)[N], const K_vec (&k)[N])
     float qk = sum(qk_vec);
 #pragma unroll
     for (int mask = THREADS_PER_KEY / 2; mask >= 1; mask /= 2) {
-        qk += __shfl_xor_sync(uint32_t(-1), qk, mask);
+        qk += MMHA_SHFL_XOR(uint32_t(-1), qk, mask);
     }
     return qk;
 }
@@ -404,6 +414,7 @@ struct Qk_dot {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#if !defined(__HIP_PLATFORM_AMD__)
 inline __device__ float4 hmma_fp32(const uint2& a, uint32_t b)
 {
     float4 c;
@@ -418,6 +429,7 @@ inline __device__ float4 hmma_fp32(const uint2& a, uint32_t b)
                  : "r"(a.x) "r"(a.y), "r"(b), "f"(zero));
     return c;
 }
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -474,7 +486,7 @@ inline __device__ float block_sum(float* red_smem, float sum)
 // Compute the sum per warp.
 #pragma unroll
     for (int mask = WARP_SIZE / 2; mask >= 1; mask /= 2) {
-        sum += __shfl_xor_sync(uint32_t(-1), sum, mask);
+        sum += MMHA_SHFL_XOR(uint32_t(-1), sum, mask);
     }
 
     // Warp leaders store the data to shared memory.
@@ -493,11 +505,11 @@ inline __device__ float block_sum(float* red_smem, float sum)
 // Parallel reduction inside the warp.
 #pragma unroll
     for (int mask = WARPS_PER_BLOCK / 2; mask >= 1; mask /= 2) {
-        sum += __shfl_xor_sync(uint32_t(-1), sum, mask);
+        sum += MMHA_SHFL_XOR(uint32_t(-1), sum, mask);
     }
 
     // Broadcast to other threads.
-    return __shfl_sync(uint32_t(-1), sum, 0);
+    return MMHA_SHFL(uint32_t(-1), sum, 0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -756,7 +768,11 @@ inline __device__ int8_t cast_to_int8(float val)
         int8_t  int8[2];
         int16_t int16;
     };
+#if defined(__HIP_PLATFORM_AMD__)
+    int16 = static_cast<int8_t>(fminf(fmaxf(rintf(val), -128.f), 127.f));
+#else
     asm volatile("cvt.rni.sat.s8.f32 %0, %1;" : "=h"(int16) : "f"(val));
+#endif
     return int8[0];
 }
 
@@ -1184,7 +1200,7 @@ __global__ void masked_multihead_attention_kernel(Multihead_attention_params<T, 
         if (QK_VECS_PER_WARP <= WARP_SIZE) {
 #pragma unroll
             for (int mask = QK_VECS_PER_WARP / 2; mask >= 1; mask /= 2) {
-                qk += __shfl_xor_sync(shfl_mask(QK_VECS_PER_WARP), qk, mask);
+                qk += MMHA_SHFL_XOR(shfl_mask(QK_VECS_PER_WARP), qk, mask);
             }
         }
     }
@@ -1357,7 +1373,7 @@ __global__ void masked_multihead_attention_kernel(Multihead_attention_params<T, 
 // group so it's not needed to run the reduction inside the group (again).
 #pragma unroll
     for (int mask = WARP_SIZE / 2; mask >= THREADS_PER_KEY; mask /= 2) {
-        qk_max = fmaxf(qk_max, __shfl_xor_sync(uint32_t(-1), qk_max, mask));
+        qk_max = fmaxf(qk_max, MMHA_SHFL_XOR(uint32_t(-1), qk_max, mask));
     }
 
     // Decompose the thread index into warp and lane.
@@ -1376,11 +1392,11 @@ __global__ void masked_multihead_attention_kernel(Multihead_attention_params<T, 
     qk_max = lane < WARPS_PER_BLOCK ? red_smem[lane] : -FLT_MAX;
 #pragma unroll
     for (int mask = WARPS_PER_BLOCK / 2; mask >= 1; mask /= 2) {
-        qk_max = fmaxf(qk_max, __shfl_xor_sync(uint32_t(-1), qk_max, mask));
+        qk_max = fmaxf(qk_max, MMHA_SHFL_XOR(uint32_t(-1), qk_max, mask));
     }
 
     // Broadcast to all the threads in the warp.
-    qk_max = __shfl_sync(uint32_t(-1), qk_max, 0);
+    qk_max = MMHA_SHFL(uint32_t(-1), qk_max, 0);
 
     // Compute the logits and start the sum.
     float sum = 0.f;

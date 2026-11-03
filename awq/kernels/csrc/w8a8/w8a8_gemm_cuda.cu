@@ -11,7 +11,9 @@
 
 #include "w8a8_gemm_cuda.h"
 #include <cuda_fp16.h>
+#if !defined(__HIP_PLATFORM_AMD__)
 #include <cuda_pipeline_primitives.h>
+#endif
 #include <torch/extension.h>
 
 #define OP_M 16
@@ -86,6 +88,7 @@
 
 
       
+#if !defined(__HIP_PLATFORM_AMD__)
 template <int N>
 __inline__ __host__ __device__ int get_log_tile(int n)
 {
@@ -951,3 +954,197 @@ void w8a8_gemm_forward_cuda(torch::Tensor _in_feats,
   }
   return ;
 }
+#else // __HIP_PLATFORM_AMD__
+
+// The kernels above are built on int8 tensor-core PTX (mma.sync.m16n8k32, ldmatrix, cp.async). On
+// ROCm the int8 x int8 -> int32 product goes through hipBLASLt instead, with a SIMT kernel for
+// GPUs or shapes hipBLASLt has no int8 solution for, followed by the same per-token x per-channel
+// scaling (and bias) epilogue.
+#include <ATen/cuda/CUDAContext.h>
+#include <c10/cuda/CUDAGuard.h>
+#if __has_include(<hipblaslt/hipblaslt-version.h>)
+#include <hipblaslt/hipblaslt-version.h>
+#endif
+
+// The hipBLASLt calls below take hipDataType and hipblasComputeType_t, which hipBLASLt adopted in
+// 0.6 (ROCm 6.0). Older releases (0.3 in ROCm 5.7) use only the SIMT kernel.
+#if defined(HIPBLASLT_VERSION_MAJOR) && (HIPBLASLT_VERSION_MAJOR > 0 || HIPBLASLT_VERSION_MINOR >= 6)
+#include <hipblaslt/hipblaslt.h>
+#include <mutex>
+#include <vector>
+
+// One hipBLASLt handle per device, created on first use and never destroyed, as PyTorch keeps its
+// own BLAS handles. PyTorch's handle accessor is not declared to extensions on ROCm before 2.4.
+static hipblasLtHandle_t w8a8_hipblaslt_handle()
+{
+  static std::mutex mutex;
+  static std::vector<hipblasLtHandle_t> handles;
+  int device = 0;
+  if (hipGetDevice(&device) != hipSuccess)
+    return nullptr;
+  std::lock_guard<std::mutex> lock(mutex);
+  if (handles.size() <= static_cast<size_t>(device))
+    handles.resize(device + 1, nullptr);
+  if (!handles[device] && hipblasLtCreate(&handles[device]) != HIPBLAS_STATUS_SUCCESS)
+    handles[device] = nullptr;
+  return handles[device];
+}
+
+// C[m][n] = sum_k A[m][k] * B[n][k], A: [M, K], B: [N, K], C: [M, N] (int32), all row-major.
+static bool w8a8_int8_gemm_hipblaslt(const int8_t *A, const int8_t *B, int32_t *C, int M, int N, int K,
+                                     hipStream_t stream, const at::TensorOptions &options)
+{
+  // hipBLASLt is column-major: compute C^T [N, M] = B [N, K] x A^T [K, M].
+  hipblasLtHandle_t handle = w8a8_hipblaslt_handle();
+  if (!handle)
+    return false;
+  hipblasLtMatmulDesc_t op = nullptr;
+  hipblasLtMatrixLayout_t a_desc = nullptr, b_desc = nullptr, c_desc = nullptr;
+  hipblasLtMatmulPreference_t pref = nullptr;
+  // The workspace comes from the caching allocator on the current stream, sized to what the
+  // selected solution asks for (int8 solutions usually need none).
+  size_t max_workspace_size = 32 * 1024 * 1024;
+  hipblasOperation_t trans_a = HIPBLAS_OP_T, trans_b = HIPBLAS_OP_N;
+  hipblasLtMatmulHeuristicResult_t heuristic = {};
+  int returned = 0;
+  bool ok = hipblasLtMatmulDescCreate(&op, HIPBLAS_COMPUTE_32I, HIP_R_32I) == HIPBLAS_STATUS_SUCCESS &&
+            hipblasLtMatmulDescSetAttribute(op, HIPBLASLT_MATMUL_DESC_TRANSA, &trans_a, sizeof(trans_a)) == HIPBLAS_STATUS_SUCCESS &&
+            hipblasLtMatmulDescSetAttribute(op, HIPBLASLT_MATMUL_DESC_TRANSB, &trans_b, sizeof(trans_b)) == HIPBLAS_STATUS_SUCCESS &&
+            hipblasLtMatrixLayoutCreate(&a_desc, HIP_R_8I, K, N, K) == HIPBLAS_STATUS_SUCCESS &&
+            hipblasLtMatrixLayoutCreate(&b_desc, HIP_R_8I, K, M, K) == HIPBLAS_STATUS_SUCCESS &&
+            hipblasLtMatrixLayoutCreate(&c_desc, HIP_R_32I, N, M, N) == HIPBLAS_STATUS_SUCCESS &&
+            hipblasLtMatmulPreferenceCreate(&pref) == HIPBLAS_STATUS_SUCCESS &&
+            hipblasLtMatmulPreferenceSetAttribute(pref, HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &max_workspace_size,
+                                                  sizeof(max_workspace_size)) == HIPBLAS_STATUS_SUCCESS &&
+            hipblasLtMatmulAlgoGetHeuristic(handle, op, a_desc, b_desc, c_desc, c_desc, pref, 1, &heuristic,
+                                            &returned) == HIPBLAS_STATUS_SUCCESS &&
+            returned > 0;
+  if (ok)
+  {
+    int32_t alpha = 1, beta = 0;
+    size_t workspace_size = heuristic.workspaceSize;
+    at::Tensor workspace;
+    if (workspace_size > 0)
+      workspace = at::empty({static_cast<int64_t>(workspace_size)}, options.dtype(at::kByte));
+    ok = hipblasLtMatmul(handle, op, &alpha, B, a_desc, A, b_desc, &beta, C, c_desc, C, c_desc, &heuristic.algo,
+                         workspace_size > 0 ? workspace.data_ptr() : nullptr, workspace_size,
+                         stream) == HIPBLAS_STATUS_SUCCESS;
+  }
+  if (pref) hipblasLtMatmulPreferenceDestroy(pref);
+  if (c_desc) hipblasLtMatrixLayoutDestroy(c_desc);
+  if (b_desc) hipblasLtMatrixLayoutDestroy(b_desc);
+  if (a_desc) hipblasLtMatrixLayoutDestroy(a_desc);
+  if (op) hipblasLtMatmulDescDestroy(op);
+  return ok;
+}
+#else
+static bool w8a8_int8_gemm_hipblaslt(const int8_t *, const int8_t *, int32_t *, int, int, int, hipStream_t,
+                                     const at::TensorOptions &)
+{
+  return false;
+}
+#endif
+
+template <int TILE_MN, int TILE_K>
+__global__ void __launch_bounds__(TILE_MN * TILE_MN) w8a8_int8_gemm_simt(const int8_t *__restrict__ A, const int8_t *__restrict__ B,
+                                                                         int32_t *__restrict__ C, int M, int N, int K)
+{
+  __shared__ int8_t A_shared[TILE_MN][TILE_K];
+  __shared__ int8_t B_shared[TILE_MN][TILE_K];
+  const int tid = threadIdx.y * TILE_MN + threadIdx.x;
+  const int m0 = blockIdx.y * TILE_MN, n0 = blockIdx.x * TILE_MN;
+  const int m = m0 + threadIdx.y, n = n0 + threadIdx.x;
+  int32_t acc = 0;
+  for (int k0 = 0; k0 < K; k0 += TILE_K)
+  {
+    for (int i = tid; i < TILE_MN * TILE_K; i += TILE_MN * TILE_MN)
+    {
+      const int r = i / TILE_K, c = i % TILE_K;
+      A_shared[r][c] = (m0 + r < M && k0 + c < K) ? A[(size_t)(m0 + r) * K + k0 + c] : 0;
+      B_shared[r][c] = (n0 + r < N && k0 + c < K) ? B[(size_t)(n0 + r) * K + k0 + c] : 0;
+    }
+    __syncthreads();
+#pragma unroll
+    for (int c = 0; c < TILE_K; ++c)
+      acc += int32_t(A_shared[threadIdx.y][c]) * int32_t(B_shared[threadIdx.x][c]);
+    __syncthreads();
+  }
+  if (m < M && n < N)
+    C[(size_t)m * N + n] = acc;
+}
+
+// out[m][n] = C[m][n] * wscales[n] * ascales[m] (+ bias[n]), with the operation order of the CUDA epilogue.
+template <bool FUSE_BIAS>
+__global__ void w8a8_scale_epilogue(const int32_t *__restrict__ C, const half *__restrict__ wscales,
+                                    const half *__restrict__ ascales, const half *__restrict__ bias,
+                                    half *__restrict__ out, int M, int N)
+{
+  const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= (size_t)M * N)
+    return;
+  const int m = i / N, n = i % N;
+  const float psum = __int2float_rn(C[i]);
+  const float wscale = __half2float(wscales[n]);
+  const float ascale = __half2float(ascales[m]);
+  if (FUSE_BIAS)
+    out[i] = __float2half_rn(psum * wscale * ascale + __half2float(bias[n]));
+  else
+    out[i] = __float2half_rn(psum * (wscale * ascale));
+}
+
+static void w8a8_gemm_forward_hip(torch::Tensor _in_feats, torch::Tensor _kernel, torch::Tensor _wscales,
+                                  torch::Tensor _ascales, torch::Tensor _out_feats, const torch::Tensor *_bias)
+{
+  TORCH_CHECK(_in_feats.is_contiguous() && _kernel.is_contiguous() && _out_feats.is_contiguous(),
+              "w8a8_gemm: inputs and output must be contiguous");
+  const int M = _out_feats.size(-2);
+  const int N = _out_feats.size(-1);
+  const int K = _in_feats.size(1);
+  TORCH_CHECK(_in_feats.size(0) == M && _kernel.size(0) == N && _kernel.size(1) == K,
+              "w8a8_gemm: shape mismatch");
+  const at::cuda::OptionalCUDAGuard device_guard(device_of(_in_feats));
+  hipStream_t stream = at::cuda::getCurrentCUDAStream();
+  auto psums = torch::empty({M, N}, _in_feats.options().dtype(torch::kInt32));
+  auto A = _in_feats.data_ptr<int8_t>();
+  auto B = _kernel.data_ptr<int8_t>();
+  auto C = psums.data_ptr<int32_t>();
+  if (M > 0 && N > 0 && !w8a8_int8_gemm_hipblaslt(A, B, C, M, N, K, stream, _in_feats.options()))
+  {
+    constexpr int TILE_MN = 16, TILE_K = 64;
+    dim3 grid((N + TILE_MN - 1) / TILE_MN, (M + TILE_MN - 1) / TILE_MN);
+    w8a8_int8_gemm_simt<TILE_MN, TILE_K><<<grid, dim3(TILE_MN, TILE_MN), 0, stream>>>(A, B, C, M, N, K);
+  }
+  auto wscales = reinterpret_cast<half *>(_wscales.data_ptr());
+  auto ascales = reinterpret_cast<half *>(_ascales.data_ptr());
+  auto out = reinterpret_cast<half *>(_out_feats.data_ptr<at::Half>());
+  const size_t total = (size_t)M * N;
+  const int threads = 256;
+  const unsigned blocks = (total + threads - 1) / threads;
+  if (total == 0)
+    return;
+  if (_bias)
+    w8a8_scale_epilogue<true><<<blocks, threads, 0, stream>>>(C, wscales, ascales,
+                                                              reinterpret_cast<half *>(_bias->data_ptr()), out, M, N);
+  else
+    w8a8_scale_epilogue<false><<<blocks, threads, 0, stream>>>(C, wscales, ascales, nullptr, out, M, N);
+}
+
+void w8a8_gemm_fuse_bias_forward_cuda(torch::Tensor _in_feats,
+                                      torch::Tensor _kernel,
+                                      torch::Tensor _wscales,
+                                      torch::Tensor _ascales,
+                                      torch::Tensor _out_feats,
+                                      torch::Tensor _bias)
+{
+  w8a8_gemm_forward_hip(_in_feats, _kernel, _wscales, _ascales, _out_feats, &_bias);
+}
+
+void w8a8_gemm_forward_cuda(torch::Tensor _in_feats,
+                            torch::Tensor _kernel,
+                            torch::Tensor _wscales,
+                            torch::Tensor _ascales,
+                            torch::Tensor _out_feats)
+{
+  w8a8_gemm_forward_hip(_in_feats, _kernel, _wscales, _ascales, _out_feats, nullptr);
+}
+#endif // __HIP_PLATFORM_AMD__

@@ -27,12 +27,46 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#if defined(__HIP_PLATFORM_AMD__)
+#include <stdexcept>
+#include <string>
+
+// The logits buffer in shared memory grows with the sequence length, and AMD GPUs typically have
+// 64 KiB of LDS per workgroup, below the CUDA opt-in limit. A launch that does not fit fails without
+// producing output, so refuse it explicitly.
+static void mmha_set_max_dynamic_smem_size(const void* kernel, size_t smem_sz)
+{
+    int device = 0;
+    int max_smem = 0;
+    hipFuncAttributes attr;
+    if (hipGetDevice(&device) != hipSuccess
+        || hipDeviceGetAttribute(&max_smem, hipDeviceAttributeMaxSharedMemoryPerBlock, device) != hipSuccess
+        || hipFuncGetAttributes(&attr, kernel) != hipSuccess) {
+        throw std::runtime_error("single_query_attention: failed to query the shared memory limit");
+    }
+    if (smem_sz + attr.sharedSizeBytes > static_cast<size_t>(max_smem)) {
+        throw std::runtime_error("single_query_attention: the sequence length needs "
+                                 + std::to_string(smem_sz + attr.sharedSizeBytes)
+                                 + " bytes of shared memory, more than the " + std::to_string(max_smem)
+                                 + " bytes available on this GPU");
+    }
+    hipFuncSetAttribute(kernel, hipFuncAttributeMaxDynamicSharedMemorySize, smem_sz);
+}
+#define MMHA_SET_MAX_DYNAMIC_SMEM_SIZE(kernel, smem_sz)                                                                \
+    mmha_set_max_dynamic_smem_size(reinterpret_cast<const void*>(kernel), smem_sz)
+#else
+#define MMHA_SET_MAX_DYNAMIC_SMEM_SIZE(kernel, smem_sz)                                                                \
+    cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_sz)
+#endif
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #define MMHA_LAUNCH_KERNEL(T, Dh, Dh_MAX, THDS_PER_KEY, THDS_PER_VALUE, THDS_PER_BLOCK, DO_CROSS_ATTENTION, stream)    \
     size_t smem_sz = mmha::smem_size_in_bytes<T, DO_CROSS_ATTENTION>(params, THDS_PER_VALUE, THDS_PER_BLOCK);          \
     auto kernel = mmha::masked_multihead_attention_kernel<T, Dh, Dh_MAX, THDS_PER_KEY, THDS_PER_VALUE,                 \
                                                           THDS_PER_BLOCK, DO_CROSS_ATTENTION>;                         \
     if (smem_sz >= 48 * 1024) {                                                                                        \
-        cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_sz);                            \
+        MMHA_SET_MAX_DYNAMIC_SMEM_SIZE(kernel, smem_sz);                                                               \
     }                                                                                                                  \
     dim3 grid(params.num_heads, params.batch_size);                                                                    \
     kernel<<<grid, THDS_PER_BLOCK, smem_sz, stream>>>(params)

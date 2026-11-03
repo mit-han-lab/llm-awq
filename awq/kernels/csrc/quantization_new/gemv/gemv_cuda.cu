@@ -50,9 +50,17 @@ __device__ __forceinline__ static void warp_reduce(T* psum, float (*out_smem)[Nu
       for (int i = 0; i < Num; ++i)
       {
           // T0 + T1 + T8 + T9 + T16 + T17 + T24 + T25 (kInterleave = 4)
+          // Width-32 logical-warp xor reduce: arch-agnostic on wave32 and wave64
+          // (offsets < 32 stay within each aligned 32-lane subgroup).
+#if defined(__HIP_PLATFORM_AMD__)
+          fpsum[i] += __shfl_xor(fpsum[i], 16, WarpSize);
+          fpsum[i] += __shfl_xor(fpsum[i], 8, WarpSize);
+          fpsum[i] += __shfl_xor(fpsum[i], 1, WarpSize);
+#else
           fpsum[i] += __shfl_xor_sync(~0, fpsum[i], 16);
           fpsum[i] += __shfl_xor_sync(~0, fpsum[i], 8);
           fpsum[i] += __shfl_xor_sync(~0, fpsum[i], 1);
+#endif
       }
       __syncthreads();
       int warp = threadIdx.x / WarpSize, lane = threadIdx.x % WarpSize;

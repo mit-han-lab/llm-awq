@@ -24,6 +24,19 @@
 namespace fastertransformer {
 
 #ifdef ENABLE_BF16
+#if defined(__HIP_PLATFORM_AMD__)
+// HIP's bf16 header has no make_bfloat162 or __floats2bfloat162_rn.
+inline __device__ __nv_bfloat162 make_bfloat162(const __nv_bfloat16 x, const __nv_bfloat16 y)
+{
+    __nv_bfloat162 t; t.x = x; t.y = y; return t;
+}
+
+inline __device__ __nv_bfloat162 __floats2bfloat162_rn(const float x, const float y)
+{
+    return __float22bfloat162_rn(make_float2(x, y));
+}
+#endif
+
 inline __device__ float2 bf1622float2(const __nv_bfloat162 val) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
     float2 f_val;

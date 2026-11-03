@@ -24,7 +24,14 @@
 __device__ __forceinline__ float warp_reduce_sum(float sum) {
   #pragma unroll
   for(int i = 4; i >= 0; i--){
+    // Width-32 logical-warp reduce: each output column is owned by 32 lanes
+    // (blockDim.x == 32), so reduce within a 32-lane subgroup on both wave32
+    // and wave64.
+#if defined(__HIP_PLATFORM_AMD__)
+    sum += __shfl_down(sum, 1<<i, WARP_SIZE);
+#else
     sum += __shfl_down_sync(0xffffffff, sum, 1<<i);
+#endif
   }
   /*
   // Equivalent to the following tree reduction implementation:

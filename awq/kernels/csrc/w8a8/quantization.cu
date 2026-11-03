@@ -27,7 +27,11 @@ __inline__ __device__ T warpReduceMax(T val)
 {
 #pragma unroll
     for (int mask = 16; mask > 0; mask >>= 1)
+#if defined(__HIP_PLATFORM_AMD__)
+        val = max(val, __shfl_xor(val, mask, 32));
+#else
         val = max(val, __shfl_xor_sync(0xffffffff, val, mask, 32));
+#endif
     return val;
 }
 

@@ -1,10 +1,17 @@
 #include <cuda_fp16.h>
-#include "semaphore.h"
 #include "gemm_cuda.h"
 #include "../dequantize.cuh"
 #include "../dispatch_utils.cuh"
 #include <torch/extension.h>
+#if defined(__HIP_PLATFORM_AMD__)
+// The CUDA tensor-core path (ldmatrix/mma.sync/cp.async + the PTX split-K
+// semaphore) does not exist on AMD clang/HIP. Use a portable SIMT GEMM that
+// reuses the GEMV decoder for the same packed int4 layout.
+#include "gemm_simt.cuh"
+#else
+#include "semaphore.h"
 #include <cuda_pipeline_primitives.h>
+#endif
 
 #define kInterleave 4
 #define OP_M 16
@@ -43,6 +50,7 @@
   kernel_func<<<num_blocks, threads_per_block, kSmemByteSize>>>(                                                                                        \
       in_feats, kernel, scales, zeros, out_feats, semaphores, num_in_feats, num_out_channels, num_in_channels);
 
+#if !defined(__HIP_PLATFORM_AMD__)
 template <int N>
 __inline__ __host__ __device__ int get_log_tile(int n)
 {
@@ -1122,6 +1130,7 @@ __global__ void gemm_w4a16_T2(T *__restrict__ A, T *__restrict__ B, T *__restric
     }
   }
 }
+#endif // !__HIP_PLATFORM_AMD__
 
 torch::Tensor gemm_forward_cuda_new(
     torch::Tensor _in_feats,
@@ -1152,6 +1161,19 @@ torch::Tensor gemm_forward_cuda_new(
     auto zeros = reinterpret_cast<ctype *>(_zeros.data_ptr());
     auto out_feats = reinterpret_cast<ctype *>(_out_feats.data_ptr());
 
+#if defined(__HIP_PLATFORM_AMD__)
+    // Portable SIMT GEMM: same packed int4 layout as the GEMV decoder.
+    constexpr int N_PER_BLOCK = 2;
+    constexpr int K_INTERLEAVE = 4;
+    constexpr int BLOCK_SIZE = 256;
+    TORCH_CHECK(num_in_channels % 128 == 0 && num_out_channels % (N_PER_BLOCK * K_INTERLEAVE) == 0,
+                "gemm_forward_cuda_new (HIP) requires K % 128 == 0 and N % 8 == 0.");
+    dim3 num_blocks(num_out_channels / N_PER_BLOCK / K_INTERLEAVE);
+    dim3 num_threads(BLOCK_SIZE);
+    gemm_w4a16_hip<N_PER_BLOCK, BLOCK_SIZE, 128, ctype><<<num_blocks, num_threads>>>(
+        in_feats, reinterpret_cast<const uint32_t *>(kernel), scales, zeros, out_feats,
+        num_in_channels, num_out_channels, num_in_feats);
+#else
     if (num_out_feats <= 32)
     {
       constexpr int G = 128;
@@ -1230,6 +1252,7 @@ torch::Tensor gemm_forward_cuda_new(
       kernel_func<<<num_blocks, threads_per_block, kSmemByteSize>>>(
           in_feats, kernel, scales, zeros, out_feats, num_in_feats, num_out_channels, num_in_channels);
     }
+#endif // __HIP_PLATFORM_AMD__
   });
 
   return _out_feats;

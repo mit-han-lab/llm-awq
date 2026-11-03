@@ -78,9 +78,16 @@ inline __device__ float2 operator-(float2 a, float  b) { return make_float2(a.x 
 
 static inline __device__ int8_t float_to_int8_rn(float x)
 {
+#if defined(__HIP_PLATFORM_AMD__)
+    // cvt.rni.sat.s8.f32: round-to-nearest-even then saturate to [-128, 127].
+    float r = rintf(x);
+    r = fminf(fmaxf(r, -128.f), 127.f);
+    return static_cast<int8_t>(static_cast<int>(r));
+#else
     uint32_t dst;
     asm volatile("cvt.rni.sat.s8.f32 %0, %1;" : "=r"(dst) : "f"(x));
     return reinterpret_cast<const int8_t&>(dst);
+#endif
 }
 
 template<typename T>
@@ -94,7 +101,7 @@ inline __device__ T ldg(const T* val) {
 #define bf162bf162 __bfloat162bfloat162
 inline __device__ int16_t bf1622int16(__nv_bfloat162 val)
 {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800) || defined(__HIP_PLATFORM_AMD__)
     float2 f_val;
     f_val.x = max(min(__low2float(val), 127.f), -128.f);
     f_val.y = max(min(__high2float(val), 127.f), -128.f);
@@ -128,7 +135,7 @@ inline __device__ int16_t bf1622int16(__nv_bfloat162 val)
 #if ENABLE_BF16
 template<>
 inline __device__ __nv_bfloat162 ldg(const __nv_bfloat162* val) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800) || defined(__HIP_PLATFORM_AMD__)
     return val[0];
 #else
     return __ldg(val);
@@ -137,7 +144,7 @@ inline __device__ __nv_bfloat162 ldg(const __nv_bfloat162* val) {
 
 template<>
 inline __device__ __nv_bfloat16 ldg(const __nv_bfloat16* val) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800) || defined(__HIP_PLATFORM_AMD__)
     return val[0];
 #else
     return __ldg(val);
@@ -203,7 +210,14 @@ __device__ inline int8_t cuda_cast<int8_t, half>(half val)
     };
 
     fp16 = val;
+#if defined(__HIP_PLATFORM_AMD__)
+    (void)int16_in;
+    float r = rintf(__half2float(val));
+    r = fminf(fmaxf(r, -128.f), 127.f);
+    int8[0] = static_cast<int8_t>(static_cast<int>(r));
+#else
     asm volatile("cvt.rni.sat.s8.f16 %0, %1;" : "=h"(int16) : "h"(int16_in));
+#endif
     return int8[0];
 }
 
@@ -230,7 +244,15 @@ __device__ inline int8_t cuda_cast<int8_t, float>(float val)
         int16_t int16;
     };
 
+#if defined(__HIP_PLATFORM_AMD__)
+    {
+        float r = rintf(val);
+        r = fminf(fmaxf(r, -128.f), 127.f);
+        int8[0] = static_cast<int8_t>(static_cast<int>(r));
+    }
+#else
     asm volatile("cvt.rni.sat.s8.f32 %0, %1;" : "=h"(int16) : "f"(val));
+#endif
     return int8[0];
 }
 
@@ -338,7 +360,11 @@ __device__ inline __nv_bfloat162 cuda_cast<__nv_bfloat162, __nv_bfloat16>(__nv_b
 template <>
 __device__ inline __nv_bfloat162 cuda_cast<__nv_bfloat162, float>(float val)
 {
+#if defined(__HIP_PLATFORM_AMD__)
+    return __float22bfloat162_rn(make_float2(val, val));
+#else
     return __float2bfloat162_rn(val);
+#endif
 }
 
 template <>

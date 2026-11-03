@@ -28,6 +28,23 @@ namespace mmha {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#if defined(__HIP_PLATFORM_AMD__)
+// The fp16 math below works on raw 16-bit and packed 32-bit half2 registers; HIP
+// has no PTX, so reinterpret them as __half / __half2 for the HIP intrinsics.
+inline __device__ __half2 u32_as_half2(uint32_t v)
+{
+    return __builtin_bit_cast(__half2, v);
+}
+
+inline __device__ uint32_t half2_as_u32(__half2 v)
+{
+    return __builtin_bit_cast(uint32_t, v);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#endif
+
 struct Float8_ {
     float2 x;
     float2 y;
@@ -219,7 +236,11 @@ inline __device__ bf16_8_t add(bf16_8_t a, bf16_8_t b)
 inline __device__ uint16_t add(uint16_t a, uint16_t b)
 {
     uint16_t c;
+#if defined(__HIP_PLATFORM_AMD__)
+    c = __half_as_ushort(__hadd(__ushort_as_half(a), __ushort_as_half(b)));
+#else
     asm volatile("add.f16 %0, %1, %2;\n" : "=h"(c) : "h"(a), "h"(b));
+#endif
     return c;
 }
 
@@ -228,7 +249,11 @@ inline __device__ uint16_t add(uint16_t a, uint16_t b)
 inline __device__ uint32_t add(uint32_t a, uint32_t b)
 {
     uint32_t c;
+#if defined(__HIP_PLATFORM_AMD__)
+    c = half2_as_u32(__hadd2(u32_as_half2(a), u32_as_half2(b)));
+#else
     asm volatile("add.f16x2 %0, %1, %2;\n" : "=r"(c) : "r"(a), "r"(b));
+#endif
     return c;
 }
 
@@ -262,7 +287,9 @@ inline __device__ uint16_t float_to_half(float f)
         uint32_t u32;
         uint16_t u16[2];
     } tmp;
-#if 0 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800  // Is it better?
+#if defined(__HIP_PLATFORM_AMD__)
+    tmp.u16[0] = __half_as_ushort(__float2half_rn(f));
+#elif 0 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800  // Is it better?
   float zero = 0.f;
   asm volatile("cvt.rn.f16x2.f32 %0, %1, %2;\n" : "=r"(tmp.u32) : "f"(zero), "f"(f));
 #else
@@ -279,7 +306,9 @@ inline __device__ uint32_t float2_to_half2(float2 f)
         uint32_t u32;
         uint16_t u16[2];
     } tmp;
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+#if defined(__HIP_PLATFORM_AMD__)
+    tmp.u32 = half2_as_u32(__float22half2_rn(f));
+#elif defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     asm volatile("cvt.rn.f16x2.f32 %0, %1, %2;\n" : "=r"(tmp.u32) : "f"(f.y), "f"(f.x));
 #else
     asm volatile("cvt.rn.f16.f32 %0, %1;\n" : "=h"(tmp.u16[0]) : "f"(f.x));
@@ -293,7 +322,11 @@ inline __device__ uint32_t float2_to_half2(float2 f)
 inline __device__ float half_to_float(uint16_t h)
 {
     float f;
+#if defined(__HIP_PLATFORM_AMD__)
+    f = __half2float(__ushort_as_half(h));
+#else
     asm volatile("cvt.f32.f16 %0, %1;\n" : "=f"(f) : "h"(h));
+#endif
     return f;
 }
 
@@ -302,7 +335,12 @@ inline __device__ float half_to_float(uint16_t h)
 inline __device__ float2 half2_to_float2(uint32_t v)
 {
     uint16_t lo, hi;
+#if defined(__HIP_PLATFORM_AMD__)
+    lo = static_cast<uint16_t>(v);
+    hi = static_cast<uint16_t>(v >> 16);
+#else
     asm volatile("mov.b32 {%0, %1}, %2;\n" : "=h"(lo), "=h"(hi) : "r"(v));
+#endif
     return make_float2(half_to_float(lo), half_to_float(hi));
 }
 
@@ -357,7 +395,11 @@ inline __device__ Float8_ add(uint4 a, Float8_ fb)
 inline __device__ uint32_t h0_h0(uint16_t a)
 {
     uint32_t b;
+#if defined(__HIP_PLATFORM_AMD__)
+    b = (static_cast<uint32_t>(a) << 16) | a;
+#else
     asm volatile("mov.b32 %0, {%1, %1};" : "=r"(b) : "h"(a));
+#endif
     return b;
 }
 
@@ -471,7 +513,11 @@ inline __device__ Float8_ add(bf16_8_t a, Float8_ fb)
 inline __device__ uint32_t fma(uint32_t a, uint32_t b, uint32_t c)
 {
     uint32_t d;
+#if defined(__HIP_PLATFORM_AMD__)
+    d = half2_as_u32(__hfma2(u32_as_half2(a), u32_as_half2(b), u32_as_half2(c)));
+#else
     asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(d) : "r"(a), "r"(b), "r"(c));
+#endif
     return d;
 }
 
@@ -810,7 +856,11 @@ template<>
 inline __device__ uint16_t mul(uint16_t a, uint16_t b)
 {
     uint16_t c;
+#if defined(__HIP_PLATFORM_AMD__)
+    c = __half_as_ushort(__hmul(__ushort_as_half(a), __ushort_as_half(b)));
+#else
     asm volatile("mul.f16 %0, %1, %2;\n" : "=h"(c) : "h"(a), "h"(b));
+#endif
     return c;
 }
 
@@ -820,7 +870,11 @@ template<>
 inline __device__ uint32_t mul(uint32_t a, uint32_t b)
 {
     uint32_t c;
+#if defined(__HIP_PLATFORM_AMD__)
+    c = half2_as_u32(__hmul2(u32_as_half2(a), u32_as_half2(b)));
+#else
     asm volatile("mul.f16x2 %0, %1, %2;\n" : "=r"(c) : "r"(a), "r"(b));
+#endif
     return c;
 }
 

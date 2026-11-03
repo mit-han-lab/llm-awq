@@ -14,6 +14,9 @@
 #include "gemm_cuda.h"
 #include <cuda_fp16.h>
 #include <c10/cuda/CUDAGuard.h>
+#if defined(__HIP_PLATFORM_AMD__)
+#include <ATen/cuda/CUDAContext.h>
+#endif
 
 
 // Pack two half values.
@@ -28,6 +31,7 @@ __device__ __forceinline__ int make_divisible(int c, int divisor){
   return (c + divisor - 1) / divisor;
 }
 
+#if !defined(__HIP_PLATFORM_AMD__)
 template <int G>
 __global__ void __launch_bounds__(128) gemm_forward_4bit_cuda_m128n64k32(int split_k_iters, half* __restrict__ A, int* __restrict__ B, half* __restrict__ scaling_factors, int* zeros, int M, int IC, int OC, half* __restrict__ C) 
 {
@@ -242,6 +246,82 @@ __global__ void __launch_bounds__(128) gemm_forward_4bit_cuda_m128n64k32(int spl
 // zeros: IC // G, OC // 8 [int32] -> cast to IC // G, OC [uint4b]
 // assume that batch_size < 16 for now
 
+#else // __HIP_PLATFORM_AMD__
+
+// The kernel above is built on ldmatrix and mma.sync tensor-core PTX. On HIP the same product is
+// computed by a SIMT kernel: each K tile of the weights is dequantized into shared memory exactly as
+// above (fp16 scale * (q - zero), rounded to fp16), then multiplied with fp32 accumulation.
+template <int G, int BLOCK_M, int BLOCK_N, int BLOCK_K>
+__global__ void __launch_bounds__(256) gemm_forward_4bit_simt(const half* __restrict__ A, const int* __restrict__ B, const half* __restrict__ scaling_factors, const int* __restrict__ zeros, int M, int IC, int OC, half* __restrict__ C)
+{
+  constexpr int THREADS = 256;
+  constexpr int THREADS_N = 16;
+  constexpr int THREADS_M = THREADS / THREADS_N;
+  constexpr int ROWS = BLOCK_M / THREADS_M;
+  constexpr int COLS = BLOCK_N / THREADS_N;
+  __shared__ half A_shared[BLOCK_M][BLOCK_K + 2];
+  __shared__ half B_shared[BLOCK_N][BLOCK_K + 2];
+
+  const int make_divisible_multipler = 128 / G;
+  const int zeros_w = make_divisible(make_divisible(IC / G, 8), make_divisible_multipler) * make_divisible_multipler;
+  const int sf_w = zeros_w * 8;
+  const int tid = threadIdx.x;
+  const int m0 = blockIdx.y * BLOCK_M;
+  const int n0 = blockIdx.x * BLOCK_N;
+  const int tm = tid / THREADS_N;
+  const int tn = tid % THREADS_N;
+
+  float acc[ROWS][COLS] = {};
+  for (int k0 = 0; k0 < IC; k0 += BLOCK_K) {
+    __syncthreads();
+    for (int i = tid; i < BLOCK_M * BLOCK_K; i += THREADS) {
+      int r = i / BLOCK_K, c = i % BLOCK_K;
+      A_shared[r][c] = (m0 + r < M) ? A[(size_t)(m0 + r) * IC + k0 + c] : __float2half(0.f);
+    }
+    // One thread unpacks one int32 (8 consecutive input channels of one output channel).
+    for (int i = tid; i < BLOCK_N * BLOCK_K / 8; i += THREADS) {
+      int r = i / (BLOCK_K / 8), c = i % (BLOCK_K / 8);
+      int oc = n0 + r;
+      int k = k0 + c * 8;
+      int g = k / G;
+      int B_loaded_current = B[(size_t)oc * (IC / 8) + k / 8];
+      int zeros_loaded = zeros[(size_t)oc * zeros_w + g / 8] >> ((g % 8) * 4);
+      float current_zeros = (float)(zeros_loaded & 0xF);
+      half scaling_factors_loaded = scaling_factors[(size_t)oc * sf_w + g];
+      #pragma unroll
+      for (int ic_1 = 0; ic_1 < 8; ic_1++) {
+        float current_single_weight_fp = (float)(B_loaded_current & 0xF);
+        B_shared[r][c * 8 + ic_1] = __float2half(__half2float(scaling_factors_loaded) * (current_single_weight_fp - current_zeros));
+        B_loaded_current = B_loaded_current >> 4;
+      }
+    }
+    __syncthreads();
+    #pragma unroll 8
+    for (int k = 0; k < BLOCK_K; k++) {
+      float a[ROWS], b[COLS];
+      #pragma unroll
+      for (int i = 0; i < ROWS; i++) a[i] = __half2float(A_shared[tm + i * THREADS_M][k]);
+      #pragma unroll
+      for (int j = 0; j < COLS; j++) b[j] = __half2float(B_shared[tn + j * THREADS_N][k]);
+      #pragma unroll
+      for (int i = 0; i < ROWS; i++)
+        #pragma unroll
+        for (int j = 0; j < COLS; j++)
+          acc[i][j] += a[i] * b[j];
+    }
+  }
+  #pragma unroll
+  for (int i = 0; i < ROWS; i++) {
+    int row = m0 + tm + i * THREADS_M;
+    if (row < M) {
+      #pragma unroll
+      for (int j = 0; j < COLS; j++)
+        C[(size_t)row * OC + n0 + tn + j * THREADS_N] = __float2half(acc[i][j]);
+    }
+  }
+}
+
+#endif // __HIP_PLATFORM_AMD__
 torch::Tensor gemm_forward_cuda(
     torch::Tensor _in_feats,
     torch::Tensor _kernel,
@@ -256,7 +336,12 @@ torch::Tensor gemm_forward_cuda(
 
     auto options = torch::TensorOptions().dtype(_in_feats.dtype()).device(_in_feats.device());
     // for int4, need _kernel.size(1) * 8
+#if defined(__HIP_PLATFORM_AMD__)
+    // The HIP kernel below reduces over all of K in one pass, so there are no split-K partial sums.
+    at::Tensor _out_feats = torch::empty({num_in_feats, _kernel.size(0)}, options);
+#else
     at::Tensor _out_feats = torch::empty({split_k_iters, num_in_feats, _kernel.size(0)}, options);
+#endif
     int num_out_feats = _out_feats.size(-2);
     int num_out_channels = _out_feats.size(-1);
 
@@ -273,6 +358,28 @@ torch::Tensor gemm_forward_cuda(
         throw std::invalid_argument("OC is not multiple of cta_N = 64");
     if (num_out_channels % 8 != 0)
         throw std::invalid_argument("OC is not multiple of pack_num = 8");
+#if defined(__HIP_PLATFORM_AMD__)
+    if (num_in_channels % 32 != 0)
+        throw std::invalid_argument("IC is not multiple of 32");
+    constexpr int BLOCK_M = 32, BLOCK_N = 64, BLOCK_K = 32;
+    dim3 num_blocks(num_out_channels / BLOCK_N, (num_in_feats + BLOCK_M - 1) / BLOCK_M);
+    auto stream = at::cuda::getCurrentCUDAStream();
+    if (group_size == 128)
+    {
+      gemm_forward_4bit_simt<128, BLOCK_M, BLOCK_N, BLOCK_K><<<num_blocks, 256, 0, stream>>>(
+        in_feats, kernel, scaling_factors, zeros, num_in_feats, num_in_channels, num_out_channels, out_feats);
+    }
+    else if (group_size == 64)
+    {
+      gemm_forward_4bit_simt<64, BLOCK_M, BLOCK_N, BLOCK_K><<<num_blocks, 256, 0, stream>>>(
+        in_feats, kernel, scaling_factors, zeros, num_in_feats, num_in_channels, num_out_channels, out_feats);
+    }
+    else
+    {
+      throw std::invalid_argument("Group size temporarily not supported.");
+    }
+    return _out_feats;
+#else
     int j_factors1 = num_out_channels / 64 / 1;
     dim3 num_blocks((num_out_feats + 128 - 1) / 128 * j_factors1 * split_k_iters);
     
@@ -294,5 +401,6 @@ torch::Tensor gemm_forward_cuda(
       throw std::invalid_argument("Group size temporarily not supported.");
     }
     return _out_feats.sum(0);
+#endif // __HIP_PLATFORM_AMD__
 }
 
