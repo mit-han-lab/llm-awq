@@ -34,7 +34,7 @@ def auto_clip_layer(
         org_max_val = w.abs().amax(dim=-1, keepdim=True)  # co, 1, n_group, 1
 
         best_max_val = org_max_val.clone()
-        min_errs = torch.ones_like(org_max_val) * 1e9
+        min_errs = torch.full_like(org_max_val, float("inf"), dtype=torch.float32)
         input_feat = input_feat.to(w.device)
         org_out = (input_feat * w).sum(dim=-1)  # co, n_token, n_group
 
@@ -42,11 +42,20 @@ def auto_clip_layer(
             max_val = org_max_val * (1 - i_s / n_grid)
             min_val = -max_val
             cur_w = torch.clamp(w, min_val, max_val)
-            q_w = pseudo_quantize_tensor(cur_w, n_bit=n_bit, **q_config)
+            # Quantize rows even when q_group_size=-1 (per-channel).
+            q_w = pseudo_quantize_tensor(
+                cur_w.reshape(-1, group_size), n_bit=n_bit, **q_config
+            ).reshape(cur_w.shape)
             cur_out = (input_feat * q_w).sum(dim=-1)
 
+            # Accumulate reconstruction errors in float32 to avoid fp16 overflow.
             # co, 1, n_group, 1
-            err = (cur_out - org_out).pow(2).mean(dim=1).view(min_errs.shape)
+            err = (
+                (cur_out.float() - org_out.float())
+                .pow(2)
+                .mean(dim=1)
+                .view(min_errs.shape)
+            )
             del cur_w
             del cur_out
             cur_best_idx = err < min_errs
