@@ -42,7 +42,9 @@ def auto_clip_layer(
             max_val = org_max_val * (1 - i_s / n_grid)
             min_val = -max_val
             cur_w = torch.clamp(w, min_val, max_val)
-            q_w = pseudo_quantize_tensor(cur_w, n_bit=n_bit, **q_config)
+            # pass the effective group size so the 4-D weight is flattened per group
+            # (with q_group_size=-1, i.e. per-channel, pseudo_quantize_tensor would otherwise get a 4-D tensor)
+            q_w = pseudo_quantize_tensor(cur_w, n_bit=n_bit, **{**q_config, "q_group_size": group_size})
             cur_out = (input_feat * q_w).sum(dim=-1)
 
             # co, 1, n_group, 1
